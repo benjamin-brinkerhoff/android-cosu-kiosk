@@ -18,8 +18,9 @@ import com.cosu.kiosk.service.LockTaskWatchdogService
 /**
  * Bespoke Kiosk Launcher activity serving as the default HOME activity.
  * Whenever launched (boot, unlock, or Home button press), it automatically checks policies
- * and immediately launches Gospel Library directly into Lock Task Mode.
- * The setup launcher screen is only visible if setup is incomplete or target is missing.
+ * and launches Gospel Library directly into Lock Task Mode.
+ * If LockTaskMode fails due to missing DO allowlisting in OwnDroid, it gracefully falls back
+ * to standard launch so the user is never stuck on the launcher screen.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
@@ -41,8 +42,7 @@ class KioskLauncherActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateStatus()
-        // Seamless auto-launch: if setup is complete, keep user encapsulated in Gospel Library
-        if (DhizukuManager.isPermissionGranted() && isAppInstalled(targetPackage)) {
+        if (isAppInstalled(targetPackage)) {
             launchTargetInLockTask()
         }
     }
@@ -81,6 +81,10 @@ class KioskLauncherActivity : AppCompatActivity() {
             configurePoliciesAndAutoLaunch()
         } else {
             updateStatus()
+            // Even if Dhizuku is still pending, if the app is installed, attempt launch
+            if (isAppInstalled(targetPackage)) {
+                launchTargetInLockTask()
+            }
         }
     }
 
@@ -91,7 +95,7 @@ class KioskLauncherActivity : AppCompatActivity() {
                     Toast.makeText(this, "Dhizuku authorization confirmed", Toast.LENGTH_SHORT).show()
                     configurePoliciesAndAutoLaunch()
                 } else {
-                    Toast.makeText(this, "Dhizuku permission required", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Dhizuku permission required for system policies", Toast.LENGTH_LONG).show()
                     updateStatus()
                 }
             }
@@ -102,11 +106,12 @@ class KioskLauncherActivity : AppCompatActivity() {
         val result = DhizukuManager.configureLockTaskPolicies(this, targetPackage)
         result.onSuccess {
             updateStatus()
-            launchTargetInLockTask()
         }.onFailure { e ->
-            Log.e(TAG, "Policy configuration failed", e)
+            Log.w(TAG, "Local policy configuration notice: ${e.message}. Will rely on OwnDroid allowlist.")
             updateStatus()
         }
+        // Always proceed to launch target
+        launchTargetInLockTask()
     }
 
     private fun launchTargetInLockTask() {
@@ -136,21 +141,39 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         if (launchIntent == null) {
             Log.w(TAG, "Unable to resolve launch intent for $targetPackage")
+            Toast.makeText(this, "Gospel Library ($targetPackage) not found", Toast.LENGTH_LONG).show()
             updateStatus()
             return
         }
 
-        val options = ActivityOptions.makeBasic()
-        options.setLockTaskEnabled(true)
-
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
+        // 1. First attempt: Launch with LockTaskMode enabled
         try {
+            val options = ActivityOptions.makeBasic()
+            options.setLockTaskEnabled(true)
             startActivity(launchIntent, options.toBundle())
             Log.i(TAG, "Dispatched LockTask launch intent for $targetPackage")
             LockTaskWatchdogService.start(this, targetPackage)
+            return
+        } catch (e: SecurityException) {
+            Log.w(TAG, "LockTaskMode SecurityException (package not yet allowlisted in OwnDroid/DO): ${e.message}")
+            Toast.makeText(
+                this,
+                "LockTask pending allowlist in OwnDroid. Opening Gospel Library...",
+                Toast.LENGTH_SHORT
+            ).show()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to launch $targetPackage in Lock Task Mode", e)
+            Log.w(TAG, "LockTaskMode failed: ${e.message}, falling back to standard launch")
+        }
+
+        // 2. Fallback: Standard launch so user is never stuck on launcher screen
+        try {
+            startActivity(launchIntent)
+            LockTaskWatchdogService.start(this, targetPackage)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed standard launch for $targetPackage", e)
+            Toast.makeText(this, "Launch error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -186,17 +209,20 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         binding.tvPolicyStatus.text = if (dhizukuOk) {
-            "• Lock Task Policies: Configured (Quick Settings Enabled)"
+            "• Lock Task Policies: Active / Managed by OwnDroid"
         } else {
             "• Lock Task Policies: Pending Authorization"
         }
 
-        if (!dhizukuOk) {
-            binding.btnAction.text = getString(R.string.btn_request_dhizuku)
-        } else if (!isTargetInstalled) {
+        if (!isTargetInstalled) {
             binding.btnAction.text = "Install Gospel Library"
             binding.btnAction.setOnClickListener {
                 openPlayStoreForPackage(targetPackage)
+            }
+        } else if (!dhizukuOk) {
+            binding.btnAction.text = getString(R.string.btn_request_dhizuku)
+            binding.btnAction.setOnClickListener {
+                requestDhizukuPermission()
             }
         } else {
             binding.btnAction.text = getString(R.string.btn_launch)
