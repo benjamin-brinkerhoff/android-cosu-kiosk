@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/primary_dark"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <!-- Secret Admin Hotspot (Invisible tap target in top corner) -->
+    <View
+        android:id="@+id/secretAdminHotspot"
+        android:layout_width="64dp"
+        android:layout_height="64dp"
+        android:layout_gravity="end"
+        android:background="@android:color/transparent" />
+
+    <TextView
+        android:id="@+id/tvKioskTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Dedicated Device Launcher"
+        android:textColor="@color/text_primary"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvTargetStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Target: Gospel Library (org.lds.ldssa)"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:layout_marginHorizontal="16dp"
+        android:backgroundTint="@color/card_bg">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <TextView
+                android:id="@+id/tvStatusHeader"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="System Status"
+                android:textColor="@color/text_primary"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvDhizukuStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="• Checking Dhizuku privileges..."
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tvAppInstallStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="• Verifying target app package..."
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tvPolicyStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="• Lock Task policies: Pending"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <Button
+        android:id="@+id/btnAction"
+        android:layout_width="match_parent"
+        android:layout_height="54dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="24dp"
+        android:backgroundTint="@color/accent_blue"
+        android:text="@string/btn_launch"
+        android:textColor="@color/white" />
+
+    <TextView
+        android:id="@+id/tvHelpHint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:gravity="center"
+        android:text="Drop-down Quick Settings enabled for Wi-Fi &amp; Bluetooth.\nMain Settings application blocked."
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+
+</LinearLayout>

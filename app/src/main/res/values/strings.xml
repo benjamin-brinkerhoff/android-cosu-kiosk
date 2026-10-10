@@ -1,0 +1,17 @@
+<resources>
+    <string name="app_name">Dedicated Kiosk</string>
+    <string name="admin_receiver_label">COSU Kiosk Administrator</string>
+    <string name="admin_receiver_description">Enforces Lock Task Mode and sandbox security policies for dedicated appliance mode.</string>
+    <string name="target_app_package">org.lds.ldssa</string>
+    <string name="target_app_name">Gospel Library</string>
+    <string name="status_ready">Kiosk environment initialized</string>
+    <string name="status_missing_target">Target application (Gospel Library) is not installed</string>
+    <string name="status_missing_dhizuku">Dhizuku permission required for Lock Task management</string>
+    <string name="btn_launch">Launch &amp; Lock Target App</string>
+    <string name="btn_request_dhizuku">Grant Dhizuku Permission</string>
+    <string name="egress_title">Administrator Egress</string>
+    <string name="egress_message">Enter administrator PIN to exit Lock Task Mode and unlock device settings:</string>
+    <string name="egress_pin_hint">Admin PIN</string>
+    <string name="btn_exit_kiosk">Unlock Device</string>
+    <string name="btn_cancel">Cancel</string>
+</resources>

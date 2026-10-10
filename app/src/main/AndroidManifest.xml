@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Privilege and System Interaction Permissions -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+
+    <application
+        android:name=".KioskApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AndroidCosuKiosk"
+        tools:targetApi="35">
+
+        <!-- Default Home / Kiosk Launcher Activity -->
+        <activity
+            android:name=".ui.KioskLauncherActivity"
+            android:clearTaskOnLaunch="true"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Device Admin Receiver for Device Policy Operations -->
+        <receiver
+            android:name=".admin.KioskAdminReceiver"
+            android:description="@string/admin_receiver_description"
+            android:exported="true"
+            android:label="@string/admin_receiver_label"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.LOCK_TASK_ENTERING" />
+                <action android:name="android.app.action.LOCK_TASK_EXITING" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Persistent Lock Task Watchdog Service -->
+        <service
+            android:name=".service.LockTaskWatchdogService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="COSU kiosk lock-task state watchdog and auto-recovery service" />
+        </service>
+
+    </application>
+
+</manifest>
