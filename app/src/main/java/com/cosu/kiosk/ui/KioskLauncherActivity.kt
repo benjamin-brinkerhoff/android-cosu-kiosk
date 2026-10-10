@@ -16,8 +16,9 @@ import com.cosu.kiosk.service.LockTaskWatchdogService
 
 /**
  * Bespoke Kiosk Launcher activity serving as the default HOME activity.
- * Intercepts Home key navigation, configures Lock Task allowlisting, and launches the target
- * application (org.lds.ldssa) directly into LOCK_TASK_MODE_LOCKED.
+ * Whenever launched (boot, unlock, or Home button press), it automatically checks policies
+ * and immediately launches Gospel Library directly into Lock Task Mode.
+ * The setup launcher screen is only visible if setup is incomplete or target is missing.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
@@ -33,12 +34,16 @@ class KioskLauncherActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupUI()
-        verifyAndInitialize()
+        verifyAndAutoLaunch()
     }
 
     override fun onResume() {
         super.onResume()
         updateStatus()
+        // Seamless auto-launch: if setup is complete, keep user encapsulated in Gospel Library
+        if (DhizukuManager.isPermissionGranted() && isAppInstalled(targetPackage)) {
+            launchTargetInLockTask()
+        }
     }
 
     private fun setupUI() {
@@ -50,7 +55,7 @@ class KioskLauncherActivity : AppCompatActivity() {
             }
         }
 
-        // Tapping the title 5 times within 2.5 seconds triggers the internal verification prompt
+        // Backup unlock trigger: Tapping the title 5 times rapidly
         binding.tvKioskTitle.setOnClickListener {
             val now = SystemClock.elapsedRealtime()
             if (now - lastSequenceTimestamp > 2500) {
@@ -68,10 +73,8 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
     }
 
-    private fun verifyAndInitialize() {
-        if (!DhizukuManager.init(this)) {
-            Log.w(TAG, "Dhizuku init returned false")
-        }
+    private fun verifyAndAutoLaunch() {
+        DhizukuManager.init(this)
 
         if (DhizukuManager.isPermissionGranted()) {
             configurePoliciesAndAutoLaunch()
@@ -101,7 +104,6 @@ class KioskLauncherActivity : AppCompatActivity() {
             launchTargetInLockTask()
         }.onFailure { e ->
             Log.e(TAG, "Policy configuration failed", e)
-            Toast.makeText(this, "Failed to apply Lock Task policy: ${e.message}", Toast.LENGTH_LONG).show()
             updateStatus()
         }
     }
@@ -111,7 +113,6 @@ class KioskLauncherActivity : AppCompatActivity() {
         val launchIntent = pm.getLaunchIntentForPackage(targetPackage)
 
         if (launchIntent == null) {
-            Toast.makeText(this, "Gospel Library ($targetPackage) is not installed!", Toast.LENGTH_LONG).show()
             updateStatus()
             return
         }
@@ -127,7 +128,6 @@ class KioskLauncherActivity : AppCompatActivity() {
             LockTaskWatchdogService.start(this, targetPackage)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch $targetPackage in Lock Task Mode", e)
-            Toast.makeText(this, "Error starting Lock Task Mode: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -135,7 +135,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         try {
             stopLockTask()
         } catch (e: Exception) {
-            Log.w(TAG, "stopLockTask call ignored or not locked", e)
+            Log.w(TAG, "stopLockTask failed or not active", e)
         }
 
         LockTaskWatchdogService.stop(this)
@@ -207,7 +207,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Intercept back navigation
+        // Suppress back key
     }
 
     companion object {

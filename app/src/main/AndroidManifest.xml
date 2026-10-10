@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Privilege and System Interaction Permissions -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -21,7 +20,7 @@
         android:theme="@style/Theme.AndroidCosuKiosk"
         tools:targetApi="35">
 
-        <!-- Default Home / Kiosk Launcher Activity -->
+        <!-- Default Home / Kiosk Launcher Activity (Immediate auto-launch into Gospel Library) -->
         <activity
             android:name=".ui.KioskLauncherActivity"
             android:clearTaskOnLaunch="true"
@@ -36,7 +35,37 @@
             </intent-filter>
         </activity>
 
-        <!-- Device Admin Receiver for Device Policy Operations -->
+        <!-- Translucent Diagnostics Activity triggered by the Quick Settings Tile -->
+        <activity
+            android:name=".ui.DiagnosticsActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.AndroidCosuKiosk.Dialog" />
+
+        <!-- Quick Settings Tile Service: Appears in swipe-down quick settings as "System Sync" -->
+        <service
+            android:name=".service.KioskTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_foreground"
+            android:label="System Sync"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Boot & Screen Unlock Receiver -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Device Admin Receiver -->
         <receiver
             android:name=".admin.KioskAdminReceiver"
             android:description="@string/admin_receiver_description"
