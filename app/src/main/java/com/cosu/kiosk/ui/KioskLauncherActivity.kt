@@ -12,9 +12,12 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.cosu.kiosk.R
 import com.cosu.kiosk.databinding.ActivityLauncherBinding
 import com.cosu.kiosk.dhizuku.DhizukuManager
+import com.cosu.kiosk.updater.AppUpdateManager
+import kotlinx.coroutines.launch
 
 /**
  * Dedicated Dual-App Kiosk Home Screen.
@@ -22,9 +25,8 @@ import com.cosu.kiosk.dhizuku.DhizukuManager
  * 1. Gospel Library (org.lds.ldssa)
  * 2. The Book of Mormon (org.lds.bom)
  *
- * Engages startLockTask() on the home activity with LOCK_TASK_FEATURE_HOME so users
- * can press Home to exit back to this screen and switch apps, while keeping Overview
- * (Recent Apps) and Settings blocked. Global Actions (normal restart) is enabled.
+ * Automatically checks GitHub releases for updates in the background on startup,
+ * updating the launcher seamlessly.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
@@ -40,6 +42,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         setupUI()
         initializeAndLock()
+        checkForBackgroundUpdates()
     }
 
     override fun onResume() {
@@ -91,6 +94,16 @@ class KioskLauncherActivity : AppCompatActivity() {
         updateCardsStatus()
     }
 
+    private fun checkForBackgroundUpdates() {
+        lifecycleScope.launch {
+            try {
+                AppUpdateManager.checkForUpdatesAndInstall(this@KioskLauncherActivity)
+            } catch (e: Exception) {
+                Log.w(TAG, "Background update check notice: ${e.message}")
+            }
+        }
+    }
+
     private fun ensureLocked() {
         try {
             startLockTask()
@@ -136,7 +149,6 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
-        // Try LockTask options first
         try {
             val options = ActivityOptions.makeBasic()
             options.setLockTaskEnabled(true)
@@ -144,7 +156,6 @@ class KioskLauncherActivity : AppCompatActivity() {
             return
         } catch (_: Exception) {}
 
-        // Fallback standard launch within current locked task stack
         try {
             startActivity(launchIntent)
         } catch (e: Exception) {
@@ -244,7 +255,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Swallow back button on the Home Screen so user doesn't glitch or exit
+        // Handled on Home Screen
     }
 
     companion object {
