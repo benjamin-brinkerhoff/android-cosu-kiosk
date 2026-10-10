@@ -3,6 +3,7 @@ package com.cosu.kiosk.ui
 import android.app.ActivityOptions
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
@@ -110,9 +111,31 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     private fun launchTargetInLockTask() {
         val pm = packageManager
-        val launchIntent = pm.getLaunchIntentForPackage(targetPackage)
+        var launchIntent = pm.getLaunchIntentForPackage(targetPackage)
+
+        // Fallback: Resolve MAIN + LAUNCHER activity explicitly if generic lookup is filtered
+        if (launchIntent == null) {
+            val queryIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                `package` = targetPackage
+            }
+            val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                pm.queryIntentActivities(queryIntent, PackageManager.ResolveInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.queryIntentActivities(queryIntent, 0)
+            }
+            if (resolved.isNotEmpty()) {
+                val activityInfo = resolved[0].activityInfo
+                launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setClassName(activityInfo.packageName, activityInfo.name)
+                }
+            }
+        }
 
         if (launchIntent == null) {
+            Log.w(TAG, "Unable to resolve launch intent for $targetPackage")
             updateStatus()
             return
         }
@@ -184,12 +207,38 @@ class KioskLauncherActivity : AppCompatActivity() {
     }
 
     private fun isAppInstalled(pkg: String): Boolean {
-        return try {
-            packageManager.getPackageInfo(pkg, 0)
-            true
-        } catch (e: PackageManager.NameNotFoundException) {
-            false
+        // 1. Try standard getPackageInfo
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(pkg, 0)
+            }
+            return true
+        } catch (_: PackageManager.NameNotFoundException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking getPackageInfo for $pkg", e)
         }
+
+        // 2. Try getLaunchIntentForPackage
+        if (packageManager.getLaunchIntentForPackage(pkg) != null) {
+            return true
+        }
+
+        // 3. Try queryIntentActivities with explicit package filter
+        val queryIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            `package` = pkg
+        }
+        val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(queryIntent, PackageManager.ResolveInfoFlags.of(0))
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(queryIntent, 0)
+        }
+
+        return resolved.isNotEmpty()
     }
 
     private fun openPlayStoreForPackage(pkg: String) {

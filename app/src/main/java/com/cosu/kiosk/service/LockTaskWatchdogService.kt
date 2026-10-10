@@ -8,6 +8,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -81,7 +82,27 @@ class LockTaskWatchdogService : Service() {
     }
 
     private fun relaunchTargetInLockTask() {
-        val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
+        var launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
+        if (launchIntent == null) {
+            val queryIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                `package` = targetPackage
+            }
+            val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(queryIntent, PackageManager.ResolveInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(queryIntent, 0)
+            }
+            if (resolved.isNotEmpty()) {
+                val activityInfo = resolved[0].activityInfo
+                launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    setClassName(activityInfo.packageName, activityInfo.name)
+                }
+            }
+        }
+
         if (launchIntent != null) {
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
             val options = ActivityOptions.makeBasic()
