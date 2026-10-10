@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Privilege and System Interaction Permissions -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
@@ -11,9 +10,10 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
-    <!-- Package Visibility Filter (Required for Android 11+ / API 30-35) -->
+    <!-- Package Visibility Filter for both reader applications and Dhizuku -->
     <queries>
         <package android:name="org.lds.ldssa" />
+        <package android:name="org.lds.bom" />
         <package android:name="com.rosan.dhizuku" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
@@ -33,11 +33,11 @@
         android:theme="@style/Theme.AndroidCosuKiosk"
         tools:targetApi="35">
 
-        <!-- Default Home / Kiosk Launcher Activity (Immediate auto-launch into Gospel Library) -->
+        <!-- Dedicated Dual-App Kiosk Home Screen -->
         <activity
             android:name=".ui.KioskLauncherActivity"
-            android:clearTaskOnLaunch="true"
-            android:excludeFromRecents="true"
+            android:clearTaskOnLaunch="false"
+            android:excludeFromRecents="false"
             android:exported="true"
             android:launchMode="singleTask"
             android:stateNotNeeded="true">
@@ -48,14 +48,14 @@
             </intent-filter>
         </activity>
 
-        <!-- Translucent Diagnostics Activity triggered by the Quick Settings Tile -->
+        <!-- Translucent Diagnostics Activity triggered by the Quick Settings Tile or Title Tap -->
         <activity
             android:name=".ui.DiagnosticsActivity"
             android:excludeFromRecents="true"
             android:exported="false"
             android:theme="@style/Theme.AndroidCosuKiosk.Dialog" />
 
-        <!-- Quick Settings Tile Service: Appears in swipe-down quick settings as "System Sync" -->
+        <!-- Quick Settings Tile Service: "System Sync" -->
         <service
             android:name=".service.KioskTileService"
             android:exported="true"
@@ -66,17 +66,6 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
-
-        <!-- Boot & Screen Unlock Receiver -->
-        <receiver
-            android:name=".receiver.BootReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.USER_PRESENT" />
-            </intent-filter>
-        </receiver>
 
         <!-- Device Admin Receiver -->
         <receiver
@@ -94,16 +83,6 @@
                 <action android:name="android.app.action.LOCK_TASK_EXITING" />
             </intent-filter>
         </receiver>
-
-        <!-- Persistent Lock Task Watchdog Service -->
-        <service
-            android:name=".service.LockTaskWatchdogService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="COSU kiosk lock-task state watchdog and auto-recovery service" />
-        </service>
 
     </application>
 

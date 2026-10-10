@@ -15,18 +15,20 @@ import androidx.appcompat.app.AppCompatActivity
 import com.cosu.kiosk.R
 import com.cosu.kiosk.databinding.ActivityLauncherBinding
 import com.cosu.kiosk.dhizuku.DhizukuManager
-import com.cosu.kiosk.service.LockTaskWatchdogService
 
 /**
- * Bespoke Kiosk Launcher activity serving as the default HOME activity.
- * Whenever launched (boot, unlock, or Home button press), it automatically checks policies
- * and launches Gospel Library directly into Lock Task Mode.
- * Invokes startLockTask() on itself to lock the task stack at the window manager level.
+ * Dedicated Dual-App Kiosk Home Screen.
+ * Displays two prominent cards:
+ * 1. Gospel Library (org.lds.ldssa)
+ * 2. The Book of Mormon (org.lds.bom)
+ *
+ * Engages startLockTask() on the home activity with LOCK_TASK_FEATURE_HOME so users
+ * can press Home to exit back to this screen and switch apps, while keeping Overview
+ * (Recent Apps) and Settings blocked. Global Actions (normal restart) is enabled.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLauncherBinding
-    private val targetPackage = "org.lds.ldssa" // Gospel Library
 
     private var tapSequenceCount = 0
     private var lastSequenceTimestamp = 0L
@@ -37,27 +39,27 @@ class KioskLauncherActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         setupUI()
-        verifyAndAutoLaunch()
+        initializeAndLock()
     }
 
     override fun onResume() {
         super.onResume()
-        updateStatus()
-        if (isAppInstalled(targetPackage)) {
-            launchTargetInLockTask()
-        }
+        updateCardsStatus()
+        ensureLocked()
     }
 
     private fun setupUI() {
-        binding.btnAction.setOnClickListener {
-            if (!DhizukuManager.isPermissionGranted()) {
-                requestDhizukuPermission()
-            } else {
-                launchTargetInLockTask()
-            }
+        // App 1: Gospel Library Card
+        binding.cardGospelLibrary.setOnClickListener {
+            launchApp(DhizukuManager.PKG_GOSPEL_LIBRARY)
         }
 
-        // Backup unlock trigger: Tapping the title 5 times rapidly
+        // App 2: The Book of Mormon Card
+        binding.cardBookOfMormon.setOnClickListener {
+            launchApp(DhizukuManager.PKG_BOOK_OF_MORMON)
+        }
+
+        // Hidden 5-tap trigger on the title for Admin PIN unlock
         binding.tvKioskTitle.setOnClickListener {
             val now = SystemClock.elapsedRealtime()
             if (now - lastSequenceTimestamp > 2500) {
@@ -68,74 +70,49 @@ class KioskLauncherActivity : AppCompatActivity() {
 
             if (tapSequenceCount >= 5) {
                 tapSequenceCount = 0
-                LockTaskWatchdogService.pauseForDiagnostics(this)
                 DiagnosticsController.showVerificationPrompt(
                     context = this,
                     onVerified = {
                         performUnlock()
-                    },
-                    onDismissed = {
-                        LockTaskWatchdogService.resumeFromDiagnostics(this)
                     }
                 )
             }
         }
     }
 
-    private fun verifyAndAutoLaunch() {
+    private fun initializeAndLock() {
         DhizukuManager.init(this)
 
         if (DhizukuManager.isPermissionGranted()) {
-            configurePoliciesAndAutoLaunch()
-        } else {
-            updateStatus()
-            if (isAppInstalled(targetPackage)) {
-                launchTargetInLockTask()
-            }
+            DhizukuManager.configureLockTaskPolicies(this)
         }
+
+        ensureLocked()
+        updateCardsStatus()
     }
 
-    private fun requestDhizukuPermission() {
-        DhizukuManager.requestPermission { granted ->
-            runOnUiThread {
-                if (granted) {
-                    Toast.makeText(this, "Dhizuku authorization confirmed", Toast.LENGTH_SHORT).show()
-                    configurePoliciesAndAutoLaunch()
-                } else {
-                    Toast.makeText(this, "Dhizuku permission required for system policies", Toast.LENGTH_LONG).show()
-                    updateStatus()
-                }
-            }
-        }
-    }
-
-    private fun configurePoliciesAndAutoLaunch() {
-        val result = DhizukuManager.configureLockTaskPolicies(this, targetPackage)
-        result.onSuccess {
-            updateStatus()
-        }.onFailure { e ->
-            Log.w(TAG, "Local policy configuration notice: ${e.message}. Relying on OwnDroid allowlist.")
-            updateStatus()
-        }
-        launchTargetInLockTask()
-    }
-
-    private fun launchTargetInLockTask() {
-        // Attempt to lock task directly on launcher to freeze navigation buttons
+    private fun ensureLocked() {
         try {
             startLockTask()
-            Log.i(TAG, "KioskLauncherActivity engaged startLockTask()")
+            Log.i(TAG, "startLockTask engaged on KioskLauncherActivity")
         } catch (e: Exception) {
             Log.w(TAG, "startLockTask on launcher notice: ${e.message}")
         }
+    }
+
+    private fun launchApp(pkg: String) {
+        if (!isAppInstalled(pkg)) {
+            openPlayStoreForPackage(pkg)
+            return
+        }
 
         val pm = packageManager
-        var launchIntent = pm.getLaunchIntentForPackage(targetPackage)
+        var launchIntent = pm.getLaunchIntentForPackage(pkg)
 
         if (launchIntent == null) {
             val queryIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
-                `package` = targetPackage
+                `package` = pkg
             }
             val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 pm.queryIntentActivities(queryIntent, PackageManager.ResolveInfoFlags.of(0))
@@ -153,33 +130,26 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         if (launchIntent == null) {
-            Log.w(TAG, "Unable to resolve launch intent for $targetPackage")
-            Toast.makeText(this, "Gospel Library ($targetPackage) not found", Toast.LENGTH_LONG).show()
-            updateStatus()
+            Toast.makeText(this, "Unable to launch $pkg", Toast.LENGTH_SHORT).show()
             return
         }
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
-        // 1. Try launching with LockTask options
+        // Try LockTask options first
         try {
             val options = ActivityOptions.makeBasic()
             options.setLockTaskEnabled(true)
             startActivity(launchIntent, options.toBundle())
-            Log.i(TAG, "Dispatched LockTask launch intent for $targetPackage")
-            LockTaskWatchdogService.start(this, targetPackage)
             return
-        } catch (_: SecurityException) {
-            Log.w(TAG, "LockTask launch unpermitted, falling back to standard launch")
         } catch (_: Exception) {}
 
-        // 2. Standard launch fallback
+        // Fallback standard launch within current locked task stack
         try {
             startActivity(launchIntent)
-            LockTaskWatchdogService.start(this, targetPackage)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed standard launch for $targetPackage", e)
-            Toast.makeText(this, "Launch error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "Failed to launch $pkg", e)
+            Toast.makeText(this, "Launch error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -190,83 +160,32 @@ class KioskLauncherActivity : AppCompatActivity() {
             Log.w(TAG, "stopLockTask failed or not active", e)
         }
 
-        LockTaskWatchdogService.stop(this)
-
         val settingsIntent = Intent(Settings.ACTION_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
         startActivity(settingsIntent)
     }
 
-    private fun updateStatus() {
-        val dhizukuOk = DhizukuManager.isPermissionGranted()
-        val isTargetInstalled = isAppInstalled(targetPackage)
-
-        binding.tvDhizukuStatus.text = if (dhizukuOk) {
-            "• Dhizuku Privilege Proxy: Active (Granted)"
+    private fun updateCardsStatus() {
+        val glInstalled = isAppInstalled(DhizukuManager.PKG_GOSPEL_LIBRARY)
+        binding.tvStatusGospelLibrary.text = if (glInstalled) {
+            getString(R.string.status_installed)
         } else {
-            "• Dhizuku Privilege Proxy: Disconnected / Not Granted"
+            getString(R.string.status_not_installed)
         }
+        binding.tvStatusGospelLibrary.setTextColor(
+            if (glInstalled) getColor(R.color.status_green) else getColor(R.color.status_amber)
+        )
 
-        binding.tvAppInstallStatus.text = if (isTargetInstalled) {
-            "• Target App ($targetPackage): Installed"
+        val bomInstalled = isAppInstalled(DhizukuManager.PKG_BOOK_OF_MORMON)
+        binding.tvStatusBookOfMormon.text = if (bomInstalled) {
+            getString(R.string.status_installed)
         } else {
-            "• Target App ($targetPackage): NOT Installed (Install from Play Store)"
+            getString(R.string.status_not_installed)
         }
-
-        binding.tvPolicyStatus.text = if (dhizukuOk) {
-            "• Lock Task Policies: Active / Managed by OwnDroid"
-        } else {
-            "• Lock Task Policies: Pending Authorization"
-        }
-
-        if (!isTargetInstalled) {
-            binding.btnAction.text = "Install Gospel Library"
-            binding.btnAction.setOnClickListener {
-                openPlayStoreForPackage(targetPackage)
-            }
-        } else if (!dhizukuOk) {
-            binding.btnAction.text = getString(R.string.btn_request_dhizuku)
-            binding.btnAction.setOnClickListener {
-                requestDhizukuPermission()
-            }
-        } else {
-            binding.btnAction.text = getString(R.string.btn_launch)
-            binding.btnAction.setOnClickListener {
-                launchTargetInLockTask()
-            }
-        }
-    }
-
-    private fun openPlayStoreForPackage(pkg: String) {
-        val marketIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("market://details?id=$pkg")
-        ).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-
-        try {
-            startActivity(marketIntent)
-        } catch (_: ActivityNotFoundException) {
-            val webIntent = Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-
-            try {
-                startActivity(webIntent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Unable to open Play Store for $pkg", e)
-                Toast.makeText(
-                    this,
-                    "Unable to open the Play Store",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        }
+        binding.tvStatusBookOfMormon.setTextColor(
+            if (bomInstalled) getColor(R.color.status_green) else getColor(R.color.status_amber)
+        )
     }
 
     private fun isAppInstalled(pkg: String): Boolean {
@@ -298,9 +217,34 @@ class KioskLauncherActivity : AppCompatActivity() {
         return resolved.isNotEmpty()
     }
 
+    private fun openPlayStoreForPackage(pkg: String) {
+        val marketIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=$pkg")
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            startActivity(marketIntent)
+        } catch (_: ActivityNotFoundException) {
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                startActivity(webIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Unable to open Play Store for $pkg", e)
+            }
+        }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Suppress back key
+        // Swallow back button on the Home Screen so user doesn't glitch or exit
     }
 
     companion object {

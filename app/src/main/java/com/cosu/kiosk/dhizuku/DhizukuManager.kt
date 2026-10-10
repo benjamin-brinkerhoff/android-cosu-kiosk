@@ -11,11 +11,16 @@ import com.rosan.dhizuku.api.Dhizuku
 import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 
 /**
- * Manages Dhizuku privilege escalation proxy to interact with DevicePolicyManager
- * without requiring direct factory-reset Device Owner provisioning on the launcher itself.
+ * Manages Dhizuku privilege escalation proxy to interact with DevicePolicyManager.
+ * Configures package allowlisting for the Kiosk launcher and both reader applications:
+ * 1. Gospel Library (org.lds.ldssa)
+ * 2. The Book of Mormon (org.lds.bom)
  */
 object DhizukuManager {
     private const val TAG = "DhizukuManager"
+
+    const val PKG_GOSPEL_LIBRARY = "org.lds.ldssa"
+    const val PKG_BOOK_OF_MORMON = "org.lds.bom"
 
     fun init(context: Context): Boolean {
         return try {
@@ -50,12 +55,6 @@ object DhizukuManager {
         }
     }
 
-    /**
-     * Resolves the DevicePolicyManager instance.
-     * Uses defensive runtime reflection across known Dhizuku API releases (getService,
-     * getSystemService, getDevicePolicyManager, and binderWrapper) while guaranteeing
-     * zero compile-time signature mismatches regardless of the resolved Dhizuku artifact.
-     */
     fun getDevicePolicyManager(context: Context): DevicePolicyManager {
         return try {
             if (isPermissionGranted()) {
@@ -72,46 +71,24 @@ object DhizukuManager {
     private fun resolveDhizukuDpm(context: Context): DevicePolicyManager? {
         val dhizukuClass = Dhizuku::class.java
 
-        // 1. Try Dhizuku.getService(Class<T>)
         try {
             val method = dhizukuClass.getMethod("getService", Class::class.java)
             val result = method.invoke(null, DevicePolicyManager::class.java)
-            if (result is DevicePolicyManager) {
-                Log.d(TAG, "Resolved DPM via Dhizuku.getService")
-                return result
-            }
-        } catch (_: NoSuchMethodException) {
-        } catch (e: Exception) {
-            Log.w(TAG, "Dhizuku.getService invocation failed", e)
-        }
+            if (result is DevicePolicyManager) return result
+        } catch (_: NoSuchMethodException) {}
 
-        // 2. Try Dhizuku.getSystemService(String)
         try {
             val method = dhizukuClass.getMethod("getSystemService", String::class.java)
             val result = method.invoke(null, Context.DEVICE_POLICY_SERVICE)
-            if (result is DevicePolicyManager) {
-                Log.d(TAG, "Resolved DPM via Dhizuku.getSystemService")
-                return result
-            }
-        } catch (_: NoSuchMethodException) {
-        } catch (e: Exception) {
-            Log.w(TAG, "Dhizuku.getSystemService invocation failed", e)
-        }
+            if (result is DevicePolicyManager) return result
+        } catch (_: NoSuchMethodException) {}
 
-        // 3. Try Dhizuku.getDevicePolicyManager()
         try {
             val method = dhizukuClass.getMethod("getDevicePolicyManager")
             val result = method.invoke(null)
-            if (result is DevicePolicyManager) {
-                Log.d(TAG, "Resolved DPM via Dhizuku.getDevicePolicyManager")
-                return result
-            }
-        } catch (_: NoSuchMethodException) {
-        } catch (e: Exception) {
-            Log.w(TAG, "Dhizuku.getDevicePolicyManager invocation failed", e)
-        }
+            if (result is DevicePolicyManager) return result
+        } catch (_: NoSuchMethodException) {}
 
-        // 4. Try binderWrapper hook on mService
         try {
             val baseDpm = context.getSystemService(DevicePolicyManager::class.java)
             val field = baseDpm.javaClass.getDeclaredField("mService")
@@ -126,11 +103,9 @@ object DhizukuManager {
                 val asInterfaceMethod = stubClass.getMethod("asInterface", IBinder::class.java)
                 val newInterface = asInterfaceMethod.invoke(null, newBinder)
                 field.set(baseDpm, newInterface)
-                Log.d(TAG, "Resolved DPM via Dhizuku.binderWrapper")
                 return baseDpm
             }
-        } catch (_: Exception) {
-        }
+        } catch (_: Exception) {}
 
         return null
     }
@@ -148,24 +123,28 @@ object DhizukuManager {
     }
 
     /**
-     * Configures the Lock Task allowlist and UI feature bitmask.
-     * Enforces the Quick Settings paradox:
-     * - LOCK_TASK_FEATURE_NOTIFICATIONS + LOCK_TASK_FEATURE_SYSTEM_INFO enables pull-down quick toggles (Wi-Fi, Bluetooth).
-     * - Excluding com.android.settings from allowlist ensures tapping the gear icon is silently blocked by ActivityManagerService.
+     * Configures the Lock Task allowlist for:
+     * - Launcher (com.cosu.kiosk)
+     * - Gospel Library (org.lds.ldssa)
+     * - The Book of Mormon (org.lds.bom)
+     *
+     * And enables the UI features:
+     * - LOCK_TASK_FEATURE_SYSTEM_INFO: clock, battery
+     * - LOCK_TASK_FEATURE_NOTIFICATIONS: pull-down quick toggles (Wi-Fi, Bluetooth)
+     * - LOCK_TASK_FEATURE_HOME: Home button to switch between the 2 apps via home screen
+     * - LOCK_TASK_FEATURE_GLOBAL_ACTIONS: normal restart and power off
+     * (LOCK_TASK_FEATURE_OVERVIEW is strictly omitted to block Recent Apps switcher)
      */
-    fun configureLockTaskPolicies(context: Context, targetPackage: String): Result<Unit> {
+    fun configureLockTaskPolicies(context: Context): Result<Unit> {
         return runCatching {
             val dpm = getDevicePolicyManager(context)
             val admin = getAdminComponent(context)
             val myPackage = context.packageName
 
-            // Allowlist launcher and target app
-            val packages = arrayOf(myPackage, targetPackage)
+            val packages = arrayOf(myPackage, PKG_GOSPEL_LIBRARY, PKG_BOOK_OF_MORMON)
             dpm.setLockTaskPackages(admin, packages)
             Log.i(TAG, "Allowlisted LockTaskPackages: ${packages.joinToString()}")
 
-            // Feature bitmask: Enable Notifications (Quick Settings) & System Info (clock, battery, Wi-Fi/BT indicators)
-            // Keep Home mapped to the allowlisted kiosk launcher
             val features = DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
                     DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
                     DevicePolicyManager.LOCK_TASK_FEATURE_HOME or

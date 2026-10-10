@@ -1,16 +1,21 @@
 <resources>
-    <string name="app_name">Dedicated Kiosk</string>
+    <string name="app_name">Study Library</string>
     <string name="admin_receiver_label">System Policy Manager</string>
     <string name="admin_receiver_description">Enforces policy management and sandbox integrity.</string>
-    <string name="target_app_package">org.lds.ldssa</string>
-    <string name="target_app_name">Gospel Library</string>
-    <string name="status_ready">Environment initialized</string>
-    <string name="status_missing_target">Target application (Gospel Library) is not installed</string>
-    <string name="status_missing_dhizuku">Dhizuku service authorization required</string>
-    <string name="btn_launch">Launch &amp; Lock Target App</string>
-    <string name="btn_request_dhizuku">Grant Dhizuku Permission</string>
+    
+    <string name="pkg_gospel_library">org.lds.ldssa</string>
+    <string name="title_gospel_library">Gospel Library</string>
+    <string name="sub_gospel_library">Scriptures, conference, hymns, magazines &amp; study manuals</string>
+
+    <string name="pkg_book_of_mormon">org.lds.bom</string>
+    <string name="title_book_of_mormon">The Book of Mormon</string>
+    <string name="sub_book_of_mormon">Another Testament of Jesus Christ</string>
+
+    <string name="status_installed">Tap to Open</string>
+    <string name="status_not_installed">Not Installed • Tap to Install</string>
+
     <string name="diag_title">System Verification</string>
-    <string name="diag_message">Enter authorization token to access diagnostic interface:</string>
+    <string name="diag_message">Enter authorization token to access device settings:</string>
     <string name="diag_hint">Authorization Token</string>
     <string name="btn_confirm">Verify</string>
     <string name="btn_cancel">Cancel</string>
