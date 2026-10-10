@@ -3,6 +3,7 @@ package com.cosu.kiosk.dhizuku
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.IBinder
 import android.util.Log
@@ -12,11 +13,6 @@ import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 
 /**
  * Manages Dhizuku privilege escalation proxy to interact with DevicePolicyManager.
- * Configures package allowlisting for:
- * 1. Kiosk launcher (com.cosu.kiosk)
- * 2. Gospel Library (org.lds.ldssa)
- * 3. The Book of Mormon (org.lds.bom)
- * 4. System Settings / Connectivity panels (com.android.settings, com.google.android.settings.intelligence)
  */
 object DhizukuManager {
     private const val TAG = "DhizukuManager"
@@ -24,6 +20,7 @@ object DhizukuManager {
     const val PKG_GOSPEL_LIBRARY = "org.lds.ldssa"
     const val PKG_BOOK_OF_MORMON = "org.lds.bom"
     const val PKG_SETTINGS = "com.android.settings"
+    const val PKG_DHIZUKU = "com.rosan.dhizuku"
 
     fun init(context: Context): Boolean {
         return try {
@@ -43,7 +40,12 @@ object DhizukuManager {
         }
     }
 
-    fun requestPermission(callback: (granted: Boolean) -> Unit) {
+    /**
+     * Attempts Dhizuku.requestPermission. If the IPC listener fails or does not prompt,
+     * returns false so the caller can directly launch the Dhizuku app interface.
+     */
+    fun requestPermission(context: Context, callback: (granted: Boolean) -> Unit) {
+        init(context)
         try {
             Dhizuku.requestPermission(object : DhizukuRequestPermissionListener() {
                 override fun onRequestPermission(grantResult: Int) {
@@ -53,9 +55,23 @@ object DhizukuManager {
                 }
             })
         } catch (e: Exception) {
-            Log.e(TAG, "Error requesting Dhizuku permission", e)
+            Log.w(TAG, "Dhizuku.requestPermission threw exception: ${e.message}")
             callback(false)
         }
+    }
+
+    fun openDhizukuApp(context: Context): Boolean {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(PKG_DHIZUKU)
+        if (launchIntent != null) {
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(launchIntent)
+                return true
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to launch Dhizuku app", e)
+            }
+        }
+        return false
     }
 
     fun getDevicePolicyManager(context: Context): DevicePolicyManager {
@@ -125,18 +141,6 @@ object DhizukuManager {
         }
     }
 
-    /**
-     * Configures the Lock Task allowlist for:
-     * - Launcher (com.cosu.kiosk)
-     * - Gospel Library (org.lds.ldssa)
-     * - The Book of Mormon (org.lds.bom)
-     * - Settings (com.android.settings) - required for Wi-Fi and Bluetooth connection activities
-     *
-     * Enables UI features:
-     * - LOCK_TASK_FEATURE_SYSTEM_INFO: clock, battery
-     * - LOCK_TASK_FEATURE_HOME: Home button to return to Study Library
-     * - LOCK_TASK_FEATURE_GLOBAL_ACTIONS: power button menu (restart/power off)
-     */
     fun configureLockTaskPolicies(context: Context): Result<Unit> {
         return runCatching {
             val dpm = getDevicePolicyManager(context)

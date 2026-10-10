@@ -9,6 +9,8 @@ import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import android.view.View
@@ -84,17 +86,33 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     private fun setupDhizukuBanner() {
         binding.btnGrantDhizukuBanner.setOnClickListener {
-            DhizukuManager.requestPermission { granted ->
+            Toast.makeText(this, "Requesting Dhizuku authorization...", Toast.LENGTH_SHORT).show()
+
+            var callbackTriggered = false
+            DhizukuManager.requestPermission(this) { granted ->
+                callbackTriggered = true
                 runOnUiThread {
                     if (granted) {
-                        Toast.makeText(this, "Dhizuku authorization granted", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "Dhizuku authorization granted!", Toast.LENGTH_SHORT).show()
                         DhizukuManager.configureLockTaskPolicies(this)
                         updateDhizukuBannerStatus()
                     } else {
-                        Toast.makeText(this, "Dhizuku permission required", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Permission denied in prompt. Opening Dhizuku app...", Toast.LENGTH_SHORT).show()
+                        DhizukuManager.openDhizukuApp(this)
                     }
                 }
             }
+
+            // If Dhizuku IPC server didn't pop up a dialog within 1.5 seconds, open Dhizuku directly
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (!callbackTriggered && !DhizukuManager.isPermissionGranted()) {
+                    Log.i(TAG, "Opening Dhizuku app directly to toggle permission")
+                    val opened = DhizukuManager.openDhizukuApp(this)
+                    if (!opened) {
+                        Toast.makeText(this, "Please open Dhizuku manually and grant 'Study Library'", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }, 1500)
         }
     }
 
