@@ -13,8 +13,8 @@ import java.security.MessageDigest
  */
 object DiagnosticsController {
 
-    // SHA-256 hash digest of default authorization code ("1234")
-    private const val AUTH_TOKEN_DIGEST = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
+    // SHA-256 hash digest of authorization code ("101694")
+    private const val AUTH_TOKEN_DIGEST = "73690db0d33988516f994fd1917a40cd9789175beb6c3fb58861ec26542e2a99"
 
     fun showVerificationPrompt(
         context: Context,

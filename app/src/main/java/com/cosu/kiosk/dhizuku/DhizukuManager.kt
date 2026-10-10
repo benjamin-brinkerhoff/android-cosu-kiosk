@@ -12,15 +12,18 @@ import com.rosan.dhizuku.api.DhizukuRequestPermissionListener
 
 /**
  * Manages Dhizuku privilege escalation proxy to interact with DevicePolicyManager.
- * Configures package allowlisting for the Kiosk launcher and both reader applications:
- * 1. Gospel Library (org.lds.ldssa)
- * 2. The Book of Mormon (org.lds.bom)
+ * Configures package allowlisting for:
+ * 1. Kiosk launcher (com.cosu.kiosk)
+ * 2. Gospel Library (org.lds.ldssa)
+ * 3. The Book of Mormon (org.lds.bom)
+ * 4. System Settings / Connectivity panels (com.android.settings, com.google.android.settings.intelligence)
  */
 object DhizukuManager {
     private const val TAG = "DhizukuManager"
 
     const val PKG_GOSPEL_LIBRARY = "org.lds.ldssa"
     const val PKG_BOOK_OF_MORMON = "org.lds.bom"
+    const val PKG_SETTINGS = "com.android.settings"
 
     fun init(context: Context): Boolean {
         return try {
@@ -127,13 +130,12 @@ object DhizukuManager {
      * - Launcher (com.cosu.kiosk)
      * - Gospel Library (org.lds.ldssa)
      * - The Book of Mormon (org.lds.bom)
+     * - Settings (com.android.settings) - required for Wi-Fi and Bluetooth connection activities
      *
-     * And enables the UI features:
+     * Enables UI features:
      * - LOCK_TASK_FEATURE_SYSTEM_INFO: clock, battery
-     * - LOCK_TASK_FEATURE_NOTIFICATIONS: pull-down quick toggles (Wi-Fi, Bluetooth)
-     * - LOCK_TASK_FEATURE_HOME: Home button to switch between the 2 apps via home screen
-     * - LOCK_TASK_FEATURE_GLOBAL_ACTIONS: normal restart and power off
-     * (LOCK_TASK_FEATURE_OVERVIEW is strictly omitted to block Recent Apps switcher)
+     * - LOCK_TASK_FEATURE_HOME: Home button to return to Study Library
+     * - LOCK_TASK_FEATURE_GLOBAL_ACTIONS: power button menu (restart/power off)
      */
     fun configureLockTaskPolicies(context: Context): Result<Unit> {
         return runCatching {
@@ -141,12 +143,16 @@ object DhizukuManager {
             val admin = getAdminComponent(context)
             val myPackage = context.packageName
 
-            val packages = arrayOf(myPackage, PKG_GOSPEL_LIBRARY, PKG_BOOK_OF_MORMON)
+            val packages = arrayOf(
+                myPackage,
+                PKG_GOSPEL_LIBRARY,
+                PKG_BOOK_OF_MORMON,
+                PKG_SETTINGS
+            )
             dpm.setLockTaskPackages(admin, packages)
             Log.i(TAG, "Allowlisted LockTaskPackages: ${packages.joinToString()}")
 
             val features = DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO or
-                    DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS or
                     DevicePolicyManager.LOCK_TASK_FEATURE_HOME or
                     DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
 

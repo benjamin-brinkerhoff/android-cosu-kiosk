@@ -1,6 +1,5 @@
 package com.cosu.kiosk.ui
 
-import android.app.ActivityOptions
 import android.bluetooth.BluetoothAdapter
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -72,33 +71,28 @@ class KioskLauncherActivity : AppCompatActivity() {
     }
 
     private fun setupAppCards() {
-        // App 1: Gospel Library
         binding.cardGospelLibrary.setOnClickListener {
             launchApp(DhizukuManager.PKG_GOSPEL_LIBRARY)
         }
 
-        // App 2: The Book of Mormon
         binding.cardBookOfMormon.setOnClickListener {
             launchApp(DhizukuManager.PKG_BOOK_OF_MORMON)
         }
     }
 
     private fun setupSettingsControls() {
-        // Wi-Fi launcher / panel
         val openWifiAction = View.OnClickListener {
             openWifiSettings()
         }
         binding.cardWifi.setOnClickListener(openWifiAction)
         binding.btnOpenWifi.setOnClickListener(openWifiAction)
 
-        // Bluetooth launcher / panel
         val openBluetoothAction = View.OnClickListener {
             openBluetoothSettings()
         }
         binding.cardBluetooth.setOnClickListener(openBluetoothAction)
         binding.btnOpenBluetooth.setOnClickListener(openBluetoothAction)
 
-        // Admin Unlock button in Settings tab
         val unlockAction = View.OnClickListener {
             DiagnosticsController.showVerificationPrompt(
                 context = this,
@@ -110,7 +104,6 @@ class KioskLauncherActivity : AppCompatActivity() {
         binding.cardAdminUnlock.setOnClickListener(unlockAction)
         binding.btnTriggerUnlock.setOnClickListener(unlockAction)
 
-        // Keep 5-tap trigger on the header icon as a discreet shortcut
         binding.ivHeaderLock.setOnClickListener {
             DiagnosticsController.showVerificationPrompt(
                 context = this,
@@ -122,38 +115,54 @@ class KioskLauncherActivity : AppCompatActivity() {
     }
 
     private fun openWifiSettings() {
-        // Try native modern connectivity panel first (Android 10+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val panelIntent = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
+        // Multi-tier intent launching to ensure Wi-Fi settings open even within locked mode
+        val intents = listOf(
+            // 1. Android Connectivity Panel
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
+            } else null,
+            // 2. Direct Wi-Fi Settings action
+            Intent(Settings.ACTION_WIFI_SETTINGS),
+            // 3. Wireless Settings fallback
+            Intent(Settings.ACTION_WIRELESS_SETTINGS),
+            // 4. Explicit Samsung Wi-Fi activity
+            Intent().setClassName("com.android.settings", "com.android.settings.Settings\$WifiSettingsActivity")
+        ).filterNotNull()
+
+        for (intent in intents) {
             try {
-                startActivity(panelIntent)
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
                 return
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                Log.d(TAG, "Wi-Fi intent failed: ${e.message}")
+            }
         }
 
-        // Fallback to standard Wi-Fi settings
-        val wifiIntent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            startActivity(wifiIntent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Unable to open Wi-Fi settings: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-        }
+        Toast.makeText(this, "Ensure com.android.settings is allowlisted in OwnDroid", Toast.LENGTH_LONG).show()
     }
 
     private fun openBluetoothSettings() {
-        // Try Bluetooth settings
-        val btIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intents = listOf(
+            // 1. Direct Bluetooth Settings action
+            Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+            // 2. Explicit Samsung Bluetooth activity
+            Intent().setClassName("com.android.settings", "com.android.settings.Settings\$BluetoothSettingsActivity"),
+            // 3. General connectivity fallback
+            Intent(Settings.ACTION_WIRELESS_SETTINGS)
+        )
+
+        for (intent in intents) {
+            try {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(intent)
+                return
+            } catch (e: Exception) {
+                Log.d(TAG, "Bluetooth intent failed: ${e.message}")
+            }
         }
-        try {
-            startActivity(btIntent)
-        } catch (e: Exception) {
-            Toast.makeText(this, "Unable to open Bluetooth settings: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-        }
+
+        Toast.makeText(this, "Ensure com.android.settings is allowlisted in OwnDroid", Toast.LENGTH_LONG).show()
     }
 
     private fun updateConnectivityStatus() {
@@ -235,13 +244,6 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-
-        try {
-            val options = ActivityOptions.makeBasic()
-            options.setLockTaskEnabled(true)
-            startActivity(launchIntent, options.toBundle())
-            return
-        } catch (_: Exception) {}
 
         try {
             startActivity(launchIntent)
@@ -342,7 +344,6 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // If on Settings tab, back press returns to Library tab
         if (binding.viewTabSettings.visibility == View.VISIBLE) {
             binding.bottomNavigation.selectedItemId = R.id.nav_library
         }
