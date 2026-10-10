@@ -1,5 +1,6 @@
 package com.cosu.kiosk.ui
 
+import android.app.role.RoleManager
 import android.bluetooth.BluetoothAdapter
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -15,6 +16,7 @@ import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.cosu.kiosk.R
@@ -32,6 +34,11 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLauncherBinding
 
+    // RoleManager contract to prompt setting this app as default Home Launcher
+    private val setHomeRoleLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        updateHomeAppBannerStatus()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLauncherBinding.inflate(layoutInflater)
@@ -40,7 +47,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         setupNavigation()
         setupAppCards()
         setupSettingsControls()
-        setupDhizukuBanner()
+        setupSetupBanners()
         initializeAndLock()
         checkForBackgroundUpdates()
     }
@@ -49,7 +56,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         super.onResume()
         updateCardsStatus()
         updateConnectivityStatus()
-        updateDhizukuBannerStatus()
+        updateSetupBanners()
         ensureLocked()
     }
 
@@ -84,7 +91,8 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupDhizukuBanner() {
+    private fun setupSetupBanners() {
+        // Step 1: Dhizuku banner button
         binding.btnGrantDhizukuBanner.setOnClickListener {
             Toast.makeText(this, "Requesting Dhizuku authorization...", Toast.LENGTH_SHORT).show()
 
@@ -95,7 +103,7 @@ class KioskLauncherActivity : AppCompatActivity() {
                     if (granted) {
                         Toast.makeText(this, "Dhizuku authorization granted!", Toast.LENGTH_SHORT).show()
                         DhizukuManager.configureLockTaskPolicies(this)
-                        updateDhizukuBannerStatus()
+                        updateSetupBanners()
                     } else {
                         Toast.makeText(this, "Permission denied in prompt. Opening Dhizuku app...", Toast.LENGTH_SHORT).show()
                         DhizukuManager.openDhizukuApp(this)
@@ -103,22 +111,73 @@ class KioskLauncherActivity : AppCompatActivity() {
                 }
             }
 
-            // If Dhizuku IPC server didn't pop up a dialog within 1.5 seconds, open Dhizuku directly
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!callbackTriggered && !DhizukuManager.isPermissionGranted()) {
                     Log.i(TAG, "Opening Dhizuku app directly to toggle permission")
                     val opened = DhizukuManager.openDhizukuApp(this)
                     if (!opened) {
-                        Toast.makeText(this, "Please open Dhizuku manually and grant 'Study Library'", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Please open Dhizuku manually and authorize Study Library", Toast.LENGTH_LONG).show()
                     }
                 }
             }, 1500)
         }
+
+        // Step 2: Default Home app banner button
+        binding.btnSetDefaultHomeBanner.setOnClickListener {
+            requestSetDefaultHome()
+        }
     }
 
-    private fun updateDhizukuBannerStatus() {
+    private fun requestSetDefaultHome() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(Context.ROLE_SERVICE) as? RoleManager
+            if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_HOME)) {
+                if (!roleManager.isRoleHeld(RoleManager.ROLE_HOME)) {
+                    val intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_HOME)
+                    setHomeRoleLauncher.launch(intent)
+                    return
+                }
+            }
+        }
+
+        // Fallback for Android 9 or if RoleManager is unavailable
+        val intent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            val homeSettingsIntent = Intent(Settings.ACTION_HOME_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                startActivity(homeSettingsIntent)
+            } catch (e: Exception) {
+                Toast.makeText(this, "Open Settings -> Apps -> Default apps to set Home app", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun isDefaultHomeApp(): Boolean {
+        val intent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+        }
+        val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        return resolveInfo?.activityInfo?.packageName == packageName
+    }
+
+    private fun updateSetupBanners() {
+        // Banner 1: Dhizuku
         val dhizukuGranted = DhizukuManager.isPermissionGranted()
         binding.cardDhizukuSetupBanner.visibility = if (dhizukuGranted) View.GONE else View.VISIBLE
+
+        // Banner 2: Default Home app (shows only when not default home)
+        updateHomeAppBannerStatus()
+    }
+
+    private fun updateHomeAppBannerStatus() {
+        val isDefault = isDefaultHomeApp()
+        binding.cardHomeAppBanner.visibility = if (isDefault) View.GONE else View.VISIBLE
     }
 
     private fun setupSettingsControls() {
@@ -241,7 +300,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         ensureLocked()
         updateCardsStatus()
-        updateDhizukuBannerStatus()
+        updateSetupBanners()
     }
 
     private fun checkForBackgroundUpdates() {

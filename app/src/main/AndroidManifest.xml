@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Dhizuku Permission to appear in Dhizuku's Authorized Applications list -->
+    <uses-permission android:name="com.rosan.dhizuku.permission.API" />
+
+    <!-- Standard System & Network Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -12,7 +16,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
 
-    <!-- Package Visibility Filter for both reader applications and Dhizuku -->
+    <!-- Package Visibility Filter for reader applications and Dhizuku -->
     <queries>
         <package android:name="org.lds.ldssa" />
         <package android:name="org.lds.bom" />
@@ -35,7 +39,7 @@
         android:theme="@style/Theme.AndroidCosuKiosk"
         tools:targetApi="35">
 
-        <!-- Dedicated Dual-App Kiosk Home Screen -->
+        <!-- App Entry Point: Appears in normal App Drawer (LAUNCHER) AND handles Home key (HOME) -->
         <activity
             android:name=".ui.KioskLauncherActivity"
             android:clearTaskOnLaunch="false"
@@ -45,6 +49,7 @@
             android:stateNotNeeded="true">
             <intent-filter android:priority="1000">
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

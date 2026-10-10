@@ -55,7 +55,7 @@
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
 
-                <!-- Setup / Permission Warning Banner (Visible only if Dhizuku permission is missing) -->
+                <!-- 1. Setup Banner: Missing Dhizuku Permission -->
                 <androidx.cardview.widget.CardView
                     android:id="@+id/cardDhizukuSetupBanner"
                     android:layout_width="match_parent"
@@ -75,7 +75,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="⚠ Dhizuku Permission Required"
+                            android:text="⚠ Step 1: Grant Dhizuku Permission"
                             android:textColor="@color/status_amber"
                             android:textSize="15sp"
                             android:textStyle="bold" />
@@ -84,7 +84,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="6dp"
-                            android:text="To lock down the device and allow switching between apps securely, grant this app Dhizuku permission:"
+                            android:text="Tap below to request permission or open Dhizuku and toggle 'Study Library' ON:"
                             android:textColor="@color/text_secondary"
                             android:textSize="13sp" />
 
@@ -94,7 +94,51 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="12dp"
-                            android:text="Grant Dhizuku Permission" />
+                            android:text="Request Dhizuku Permission" />
+
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+
+                <!-- 2. Setup Banner: Set Default Home App -->
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/cardHomeAppBanner"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="@color/card_bg"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="3dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="★ Step 2: Set as Default Home App"
+                            android:textColor="@color/accent_blue"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:text="To lock navigation to these reading apps, set Study Library as your default Home launcher:"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="13sp" />
+
+                        <Button
+                            android:id="@+id/btnSetDefaultHomeBanner"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:text="Set Default Home App" />
 
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
@@ -102,7 +146,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="16dp"
                     android:text="Select an authorized scripture application:"
                     android:textColor="@color/text_secondary"
                     android:textSize="14sp" />
