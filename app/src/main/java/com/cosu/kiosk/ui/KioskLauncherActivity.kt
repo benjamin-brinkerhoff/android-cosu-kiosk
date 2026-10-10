@@ -19,8 +19,7 @@ import com.cosu.kiosk.service.LockTaskWatchdogService
  * Bespoke Kiosk Launcher activity serving as the default HOME activity.
  * Whenever launched (boot, unlock, or Home button press), it automatically checks policies
  * and launches Gospel Library directly into Lock Task Mode.
- * If LockTaskMode fails due to missing DO allowlisting in OwnDroid, it gracefully falls back
- * to standard launch so the user is never stuck on the launcher screen.
+ * Invokes startLockTask() on itself to lock the task stack at the window manager level.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
@@ -67,9 +66,16 @@ class KioskLauncherActivity : AppCompatActivity() {
 
             if (tapSequenceCount >= 5) {
                 tapSequenceCount = 0
-                DiagnosticsController.showVerificationPrompt(this) {
-                    performUnlock()
-                }
+                LockTaskWatchdogService.pauseForDiagnostics(this)
+                DiagnosticsController.showVerificationPrompt(
+                    context = this,
+                    onVerified = {
+                        performUnlock()
+                    },
+                    onDismissed = {
+                        LockTaskWatchdogService.resumeFromDiagnostics(this)
+                    }
+                )
             }
         }
     }
@@ -81,7 +87,6 @@ class KioskLauncherActivity : AppCompatActivity() {
             configurePoliciesAndAutoLaunch()
         } else {
             updateStatus()
-            // Even if Dhizuku is still pending, if the app is installed, attempt launch
             if (isAppInstalled(targetPackage)) {
                 launchTargetInLockTask()
             }
@@ -107,18 +112,24 @@ class KioskLauncherActivity : AppCompatActivity() {
         result.onSuccess {
             updateStatus()
         }.onFailure { e ->
-            Log.w(TAG, "Local policy configuration notice: ${e.message}. Will rely on OwnDroid allowlist.")
+            Log.w(TAG, "Local policy configuration notice: ${e.message}. Relying on OwnDroid allowlist.")
             updateStatus()
         }
-        // Always proceed to launch target
         launchTargetInLockTask()
     }
 
     private fun launchTargetInLockTask() {
+        // Attempt to lock task directly on launcher to freeze navigation buttons
+        try {
+            startLockTask()
+            Log.i(TAG, "KioskLauncherActivity engaged startLockTask()")
+        } catch (e: Exception) {
+            Log.w(TAG, "startLockTask on launcher notice: ${e.message}")
+        }
+
         val pm = packageManager
         var launchIntent = pm.getLaunchIntentForPackage(targetPackage)
 
-        // Fallback: Resolve MAIN + LAUNCHER activity explicitly if generic lookup is filtered
         if (launchIntent == null) {
             val queryIntent = Intent(Intent.ACTION_MAIN).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
@@ -148,7 +159,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
 
-        // 1. First attempt: Launch with LockTaskMode enabled
+        // 1. Try launching with LockTask options
         try {
             val options = ActivityOptions.makeBasic()
             options.setLockTaskEnabled(true)
@@ -156,18 +167,11 @@ class KioskLauncherActivity : AppCompatActivity() {
             Log.i(TAG, "Dispatched LockTask launch intent for $targetPackage")
             LockTaskWatchdogService.start(this, targetPackage)
             return
-        } catch (e: SecurityException) {
-            Log.w(TAG, "LockTaskMode SecurityException (package not yet allowlisted in OwnDroid/DO): ${e.message}")
-            Toast.makeText(
-                this,
-                "LockTask pending allowlist in OwnDroid. Opening Gospel Library...",
-                Toast.LENGTH_SHORT
-            ).show()
-        } catch (e: Exception) {
-            Log.w(TAG, "LockTaskMode failed: ${e.message}, falling back to standard launch")
-        }
+        } catch (_: SecurityException) {
+            Log.w(TAG, "LockTask launch unpermitted, falling back to standard launch")
+        } catch (_: Exception) {}
 
-        // 2. Fallback: Standard launch so user is never stuck on launcher screen
+        // 2. Standard launch fallback
         try {
             startActivity(launchIntent)
             LockTaskWatchdogService.start(this, targetPackage)
@@ -233,7 +237,6 @@ class KioskLauncherActivity : AppCompatActivity() {
     }
 
     private fun isAppInstalled(pkg: String): Boolean {
-        // 1. Try standard getPackageInfo
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 packageManager.getPackageInfo(pkg, PackageManager.PackageInfoFlags.of(0))
@@ -242,17 +245,12 @@ class KioskLauncherActivity : AppCompatActivity() {
                 packageManager.getPackageInfo(pkg, 0)
             }
             return true
-        } catch (_: PackageManager.NameNotFoundException) {
-        } catch (e: Exception) {
-            Log.w(TAG, "Error checking getPackageInfo for $pkg", e)
-        }
+        } catch (_: PackageManager.NameNotFoundException) {}
 
-        // 2. Try getLaunchIntentForPackage
         if (packageManager.getLaunchIntentForPackage(pkg) != null) {
             return true
         }
 
-        // 3. Try queryIntentActivities with explicit package filter
         val queryIntent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_LAUNCHER)
             `package` = pkg
@@ -265,19 +263,6 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
 
         return resolved.isNotEmpty()
-    }
-
-    private fun openPlayStoreForPackage(pkg: String) {
-        val uri = android.net.Uri.parse("market://details?id=$pkg")
-        val intent = Intent(Intent.ACTION_VIEW, uri).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            val webIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://play.google.com/store/apps/details?id=$pkg"))
-            startActivity(webIntent)
-        }
     }
 
     @Deprecated("Deprecated in Java")

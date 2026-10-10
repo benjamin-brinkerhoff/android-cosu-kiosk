@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import com.cosu.kiosk.dhizuku.DhizukuManager
 import com.cosu.kiosk.service.LockTaskWatchdogService
 
 /**
@@ -17,10 +16,20 @@ class DiagnosticsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Display the disguised verification dialog over the current screen
-        DiagnosticsController.showVerificationPrompt(this) {
-            performUnlock()
-        }
+        // 1. Pause watchdog immediately so the user can type the PIN without interruption
+        LockTaskWatchdogService.pauseForDiagnostics(this)
+
+        // 2. Display the verification dialog directly over the current screen
+        DiagnosticsController.showVerificationPrompt(
+            context = this,
+            onVerified = {
+                performUnlock()
+            },
+            onDismissed = {
+                LockTaskWatchdogService.resumeFromDiagnostics(this)
+                finish()
+            }
+        )
     }
 
     private fun performUnlock() {
@@ -31,17 +40,7 @@ class DiagnosticsActivity : AppCompatActivity() {
             Log.w(TAG, "stopLockTask failed or not active on this task", e)
         }
 
-        // Also stop Lock Task on proxy DPM if needed
-        try {
-            val dpm = DhizukuManager.getDevicePolicyManager(this)
-            val admin = DhizukuManager.getAdminComponent(this)
-            // Empty allowlist drops Lock Task session immediately
-            dpm.setLockTaskPackages(admin, arrayOf())
-        } catch (e: Exception) {
-            Log.w(TAG, "Resetting lock task packages via DPM proxy failed", e)
-        }
-
-        // Terminate watchdog service
+        // Terminate watchdog service permanently
         LockTaskWatchdogService.stop(this)
 
         // Launch standard Android Settings
@@ -50,6 +49,13 @@ class DiagnosticsActivity : AppCompatActivity() {
         }
         startActivity(settingsIntent)
         finish()
+    }
+
+    override fun onDestroy() {
+        if (LockTaskWatchdogService.isDiagnosticsActive) {
+            LockTaskWatchdogService.resumeFromDiagnostics(this)
+        }
+        super.onDestroy()
     }
 
     companion object {

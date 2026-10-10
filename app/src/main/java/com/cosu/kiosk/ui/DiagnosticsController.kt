@@ -16,30 +16,41 @@ object DiagnosticsController {
     // SHA-256 hash digest of default authorization code ("1234")
     private const val AUTH_TOKEN_DIGEST = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4"
 
-    fun showVerificationPrompt(context: Context, onVerified: () -> Unit) {
+    fun showVerificationPrompt(
+        context: Context,
+        onVerified: () -> Unit,
+        onDismissed: (() -> Unit)? = null
+    ) {
         val input = EditText(context).apply {
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
             hint = "Authorization Token"
         }
 
-        AlertDialog.Builder(context)
+        val dialog = AlertDialog.Builder(context)
             .setTitle("System Verification")
             .setMessage("Enter authorization token to access diagnostic interface:")
             .setView(input)
-            .setPositiveButton("Verify") { dialog, _ ->
+            .setPositiveButton("Verify") { d, _ ->
                 val enteredToken = input.text.toString().trim()
                 if (verifyDigest(enteredToken)) {
                     onVerified()
                 } else {
                     Toast.makeText(context, "Verification failed", Toast.LENGTH_SHORT).show()
+                    onDismissed?.invoke()
                 }
-                dialog.dismiss()
+                d.dismiss()
             }
-            .setNegativeButton("Cancel") { dialog, _ ->
-                dialog.dismiss()
+            .setNegativeButton("Cancel") { d, _ ->
+                onDismissed?.invoke()
+                d.dismiss()
+            }
+            .setOnCancelListener {
+                onDismissed?.invoke()
             }
             .setCancelable(false)
-            .show()
+            .create()
+
+        dialog.show()
     }
 
     private fun verifyDigest(token: String): Boolean {

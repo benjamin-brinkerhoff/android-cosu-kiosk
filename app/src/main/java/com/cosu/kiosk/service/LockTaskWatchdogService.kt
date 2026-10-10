@@ -25,6 +25,8 @@ import kotlinx.coroutines.launch
  * Persistent foreground service watchdog that monitors ActivityManager.lockTaskModeState.
  * If the locked application crashes, updates, or is circumscribed, the watchdog re-initiates
  * the Lock Task session automatically.
+ * Automatically pauses monitoring while the diagnostic authorization prompt is open
+ * so administrators can enter the unlock token without being interrupted or redirected.
  */
 class LockTaskWatchdogService : Service() {
 
@@ -43,12 +45,25 @@ class LockTaskWatchdogService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
-        if (action == ACTION_STOP_WATCHDOG) {
-            Log.i(TAG, "Stopping LockTaskWatchdogService")
-            isWatchdogActive = false
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
+        when (action) {
+            ACTION_STOP_WATCHDOG -> {
+                Log.i(TAG, "Stopping LockTaskWatchdogService")
+                isWatchdogActive = false
+                isDiagnosticsActive = false
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_PAUSE_FOR_DIAGNOSTICS -> {
+                Log.i(TAG, "Watchdog paused for diagnostic prompt")
+                isDiagnosticsActive = true
+                return START_STICKY
+            }
+            ACTION_RESUME_FROM_DIAGNOSTICS -> {
+                Log.i(TAG, "Watchdog resumed after diagnostic prompt")
+                isDiagnosticsActive = false
+                return START_STICKY
+            }
         }
 
         intent?.getStringExtra(EXTRA_TARGET_PACKAGE)?.let {
@@ -68,6 +83,12 @@ class LockTaskWatchdogService : Service() {
             val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             while (isActive && isWatchdogActive) {
                 try {
+                    // Do not intervene while administrator is typing the diagnostic PIN
+                    if (isDiagnosticsActive) {
+                        delay(POLL_INTERVAL_DIAGNOSTIC_MS)
+                        continue
+                    }
+
                     val state = activityManager.lockTaskModeState
                     if (state == ActivityManager.LOCK_TASK_MODE_NONE) {
                         Log.w(TAG, "Watchdog detected LOCK_TASK_MODE_NONE. Re-asserting lock on $targetPackage")
@@ -76,12 +97,14 @@ class LockTaskWatchdogService : Service() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error checking lockTaskModeState", e)
                 }
-                delay(POLL_INTERVAL_MS)
+                delay(POLL_INTERVAL_NORMAL_MS)
             }
         }
     }
 
     private fun relaunchTargetInLockTask() {
+        if (isDiagnosticsActive) return
+
         var launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
         if (launchIntent == null) {
             val queryIntent = Intent(Intent.ACTION_MAIN).apply {
@@ -111,10 +134,10 @@ class LockTaskWatchdogService : Service() {
                 startActivity(launchIntent, options.toBundle())
                 Log.i(TAG, "Successfully relaunched $targetPackage in Lock Task Mode")
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to relaunch $targetPackage in Lock Task Mode", e)
+                try {
+                    startActivity(launchIntent)
+                } catch (_: Exception) {}
             }
-        } else {
-            Log.e(TAG, "Target package $targetPackage has no launch intent")
         }
     }
 
@@ -146,6 +169,7 @@ class LockTaskWatchdogService : Service() {
     override fun onDestroy() {
         serviceJob.cancel()
         isWatchdogActive = false
+        isDiagnosticsActive = false
         super.onDestroy()
     }
 
@@ -153,10 +177,16 @@ class LockTaskWatchdogService : Service() {
         private const val TAG = "LockTaskWatchdog"
         private const val CHANNEL_ID = "kiosk_watchdog_channel"
         private const val NOTIFICATION_ID = 1001
-        private const val POLL_INTERVAL_MS = 2500L
+        private const val POLL_INTERVAL_NORMAL_MS = 1000L
+        private const val POLL_INTERVAL_DIAGNOSTIC_MS = 1500L
+
+        @Volatile
+        var isDiagnosticsActive: Boolean = false
 
         const val EXTRA_TARGET_PACKAGE = "extra_target_package"
         const val ACTION_STOP_WATCHDOG = "com.cosu.kiosk.action.STOP_WATCHDOG"
+        const val ACTION_PAUSE_FOR_DIAGNOSTICS = "com.cosu.kiosk.action.PAUSE_FOR_DIAGNOSTICS"
+        const val ACTION_RESUME_FROM_DIAGNOSTICS = "com.cosu.kiosk.action.RESUME_FROM_DIAGNOSTICS"
 
         fun start(context: Context, targetPackage: String) {
             val intent = Intent(context, LockTaskWatchdogService::class.java).apply {
@@ -170,8 +200,25 @@ class LockTaskWatchdogService : Service() {
         }
 
         fun stop(context: Context) {
+            isDiagnosticsActive = false
             val intent = Intent(context, LockTaskWatchdogService::class.java).apply {
                 action = ACTION_STOP_WATCHDOG
+            }
+            context.startService(intent)
+        }
+
+        fun pauseForDiagnostics(context: Context) {
+            isDiagnosticsActive = true
+            val intent = Intent(context, LockTaskWatchdogService::class.java).apply {
+                action = ACTION_PAUSE_FOR_DIAGNOSTICS
+            }
+            context.startService(intent)
+        }
+
+        fun resumeFromDiagnostics(context: Context) {
+            isDiagnosticsActive = false
+            val intent = Intent(context, LockTaskWatchdogService::class.java).apply {
+                action = ACTION_RESUME_FROM_DIAGNOSTICS
             }
             context.startService(intent)
         }
