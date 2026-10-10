@@ -38,6 +38,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         setupNavigation()
         setupAppCards()
         setupSettingsControls()
+        setupDhizukuBanner()
         initializeAndLock()
         checkForBackgroundUpdates()
     }
@@ -46,6 +47,7 @@ class KioskLauncherActivity : AppCompatActivity() {
         super.onResume()
         updateCardsStatus()
         updateConnectivityStatus()
+        updateDhizukuBannerStatus()
         ensureLocked()
     }
 
@@ -80,6 +82,27 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
     }
 
+    private fun setupDhizukuBanner() {
+        binding.btnGrantDhizukuBanner.setOnClickListener {
+            DhizukuManager.requestPermission { granted ->
+                runOnUiThread {
+                    if (granted) {
+                        Toast.makeText(this, "Dhizuku authorization granted", Toast.LENGTH_SHORT).show()
+                        DhizukuManager.configureLockTaskPolicies(this)
+                        updateDhizukuBannerStatus()
+                    } else {
+                        Toast.makeText(this, "Dhizuku permission required", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun updateDhizukuBannerStatus() {
+        val dhizukuGranted = DhizukuManager.isPermissionGranted()
+        binding.cardDhizukuSetupBanner.visibility = if (dhizukuGranted) View.GONE else View.VISIBLE
+    }
+
     private fun setupSettingsControls() {
         val openWifiAction = View.OnClickListener {
             openWifiSettings()
@@ -93,12 +116,10 @@ class KioskLauncherActivity : AppCompatActivity() {
         binding.cardBluetooth.setOnClickListener(openBluetoothAction)
         binding.btnOpenBluetooth.setOnClickListener(openBluetoothAction)
 
-        // Manual Check for Updates Button
         binding.btnCheckUpdate.setOnClickListener {
             triggerManualUpdateCheck()
         }
 
-        // Admin Unlock button in Settings tab
         val unlockAction = View.OnClickListener {
             DiagnosticsController.showVerificationPrompt(
                 context = this,
@@ -202,6 +223,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
         ensureLocked()
         updateCardsStatus()
+        updateDhizukuBannerStatus()
     }
 
     private fun checkForBackgroundUpdates() {
