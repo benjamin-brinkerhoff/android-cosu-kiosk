@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
-import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.cosu.kiosk.R
@@ -17,17 +16,16 @@ import com.cosu.kiosk.service.LockTaskWatchdogService
 
 /**
  * Bespoke Kiosk Launcher activity serving as the default HOME activity.
- * Intercepts Home key navigation, configures Lock Task allowlisting, launches the target
- * application (org.lds.ldssa) directly into LOCK_TASK_MODE_LOCKED, and contains a hidden
- * multi-tap egress trigger.
+ * Intercepts Home key navigation, configures Lock Task allowlisting, and launches the target
+ * application (org.lds.ldssa) directly into LOCK_TASK_MODE_LOCKED.
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLauncherBinding
     private val targetPackage = "org.lds.ldssa" // Gospel Library
 
-    private var secretTapCount = 0
-    private var lastTapTimestamp = 0L
+    private var tapSequenceCount = 0
+    private var lastSequenceTimestamp = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,19 +50,19 @@ class KioskLauncherActivity : AppCompatActivity() {
             }
         }
 
-        // Hidden egress trigger: 5 rapid taps within 2.5 seconds on the secret hotspot
-        binding.secretAdminHotspot.setOnClickListener {
+        // Tapping the title 5 times within 2.5 seconds triggers the internal verification prompt
+        binding.tvKioskTitle.setOnClickListener {
             val now = SystemClock.elapsedRealtime()
-            if (now - lastTapTimestamp > 2500) {
-                secretTapCount = 0
+            if (now - lastSequenceTimestamp > 2500) {
+                tapSequenceCount = 0
             }
-            lastTapTimestamp = now
-            secretTapCount++
+            lastSequenceTimestamp = now
+            tapSequenceCount++
 
-            if (secretTapCount >= 5) {
-                secretTapCount = 0
-                AdminEgressDialog.show(this) {
-                    performAdminEgress()
+            if (tapSequenceCount >= 5) {
+                tapSequenceCount = 0
+                DiagnosticsController.showVerificationPrompt(this) {
+                    performUnlock()
                 }
             }
         }
@@ -86,10 +84,10 @@ class KioskLauncherActivity : AppCompatActivity() {
         DhizukuManager.requestPermission { granted ->
             runOnUiThread {
                 if (granted) {
-                    Toast.makeText(this, "Dhizuku permission granted", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Dhizuku authorization confirmed", Toast.LENGTH_SHORT).show()
                     configurePoliciesAndAutoLaunch()
                 } else {
-                    Toast.makeText(this, "Dhizuku permission denied. Grant via Dhizuku app.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Dhizuku permission required", Toast.LENGTH_LONG).show()
                     updateStatus()
                 }
             }
@@ -118,7 +116,6 @@ class KioskLauncherActivity : AppCompatActivity() {
             return
         }
 
-        // Configure ActivityOptions to enter Lock Task Mode directly
         val options = ActivityOptions.makeBasic()
         options.setLockTaskEnabled(true)
 
@@ -127,8 +124,6 @@ class KioskLauncherActivity : AppCompatActivity() {
         try {
             startActivity(launchIntent, options.toBundle())
             Log.i(TAG, "Dispatched LockTask launch intent for $targetPackage")
-
-            // Start watchdog service to guard against crashes or task dropouts
             LockTaskWatchdogService.start(this, targetPackage)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch $targetPackage in Lock Task Mode", e)
@@ -136,18 +131,15 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
     }
 
-    private fun performAdminEgress() {
+    private fun performUnlock() {
         try {
-            // Stop lock task on launcher if active
             stopLockTask()
         } catch (e: Exception) {
             Log.w(TAG, "stopLockTask call ignored or not locked", e)
         }
 
-        // Stop watchdog so it does not pull the device back into Lock Task
         LockTaskWatchdogService.stop(this)
 
-        // Open device settings for administrative maintenance
         val settingsIntent = Intent(Settings.ACTION_SETTINGS).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
@@ -215,8 +207,7 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Intercept and swallow back press to preserve kiosk integrity
-        // In Android 13+, Back Invoked Callback handles this, but in Lock Task Mode the OS suppresses back events.
+        // Intercept back navigation
     }
 
     companion object {

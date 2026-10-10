@@ -7,19 +7,14 @@
     android:orientation="vertical"
     android:padding="24dp">
 
-    <!-- Secret Admin Hotspot (Invisible tap target in top corner) -->
-    <View
-        android:id="@+id/secretAdminHotspot"
-        android:layout_width="64dp"
-        android:layout_height="64dp"
-        android:layout_gravity="end"
-        android:background="@android:color/transparent" />
-
+    <!-- Title view serves double-duty for subtle multi-tap diagnostics trigger -->
     <TextView
         android:id="@+id/tvKioskTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="32dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:padding="8dp"
         android:text="Dedicated Device Launcher"
         android:textColor="@color/text_primary"
         android:textSize="22sp"
@@ -29,7 +24,7 @@
         android:id="@+id/tvTargetStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="4dp"
         android:text="Target: Gospel Library (org.lds.ldssa)"
         android:textColor="@color/text_secondary"
         android:textSize="14sp" />
