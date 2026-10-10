@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.IBinder
 import android.util.Log
 import com.cosu.kiosk.admin.KioskAdminReceiver
 import com.rosan.dhizuku.api.Dhizuku
@@ -49,22 +50,89 @@ object DhizukuManager {
         }
     }
 
+    /**
+     * Resolves the DevicePolicyManager instance.
+     * Uses defensive runtime reflection across known Dhizuku API releases (getService,
+     * getSystemService, getDevicePolicyManager, and binderWrapper) while guaranteeing
+     * zero compile-time signature mismatches regardless of the resolved Dhizuku artifact.
+     */
     fun getDevicePolicyManager(context: Context): DevicePolicyManager {
         return try {
             if (isPermissionGranted()) {
-                Dhizuku.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                    as? DevicePolicyManager
-                    ?: (context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                        as DevicePolicyManager)
+                resolveDhizukuDpm(context) ?: context.getSystemService(DevicePolicyManager::class.java)
             } else {
-                context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                    as DevicePolicyManager
+                context.getSystemService(DevicePolicyManager::class.java)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error obtaining Dhizuku DPM proxy, falling back to system DPM", e)
-            context.getSystemService(Context.DEVICE_POLICY_SERVICE)
-                as DevicePolicyManager
+            context.getSystemService(DevicePolicyManager::class.java)
         }
+    }
+
+    private fun resolveDhizukuDpm(context: Context): DevicePolicyManager? {
+        val dhizukuClass = Dhizuku::class.java
+
+        // 1. Try Dhizuku.getService(Class<T>)
+        try {
+            val method = dhizukuClass.getMethod("getService", Class::class.java)
+            val result = method.invoke(null, DevicePolicyManager::class.java)
+            if (result is DevicePolicyManager) {
+                Log.d(TAG, "Resolved DPM via Dhizuku.getService")
+                return result
+            }
+        } catch (_: NoSuchMethodException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Dhizuku.getService invocation failed", e)
+        }
+
+        // 2. Try Dhizuku.getSystemService(String)
+        try {
+            val method = dhizukuClass.getMethod("getSystemService", String::class.java)
+            val result = method.invoke(null, Context.DEVICE_POLICY_SERVICE)
+            if (result is DevicePolicyManager) {
+                Log.d(TAG, "Resolved DPM via Dhizuku.getSystemService")
+                return result
+            }
+        } catch (_: NoSuchMethodException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Dhizuku.getSystemService invocation failed", e)
+        }
+
+        // 3. Try Dhizuku.getDevicePolicyManager()
+        try {
+            val method = dhizukuClass.getMethod("getDevicePolicyManager")
+            val result = method.invoke(null)
+            if (result is DevicePolicyManager) {
+                Log.d(TAG, "Resolved DPM via Dhizuku.getDevicePolicyManager")
+                return result
+            }
+        } catch (_: NoSuchMethodException) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Dhizuku.getDevicePolicyManager invocation failed", e)
+        }
+
+        // 4. Try binderWrapper hook on mService
+        try {
+            val baseDpm = context.getSystemService(DevicePolicyManager::class.java)
+            val field = baseDpm.javaClass.getDeclaredField("mService")
+            field.isAccessible = true
+            val oldInterface = field.get(baseDpm)
+            if (oldInterface != null) {
+                val asBinderMethod = oldInterface.javaClass.getMethod("asBinder")
+                val oldBinder = asBinderMethod.invoke(oldInterface) as IBinder
+                val binderWrapperMethod = dhizukuClass.getMethod("binderWrapper", IBinder::class.java)
+                val newBinder = binderWrapperMethod.invoke(null, oldBinder) as IBinder
+                val stubClass = Class.forName("android.app.admin.IDevicePolicyManager\$Stub")
+                val asInterfaceMethod = stubClass.getMethod("asInterface", IBinder::class.java)
+                val newInterface = asInterfaceMethod.invoke(null, newBinder)
+                field.set(baseDpm, newInterface)
+                Log.d(TAG, "Resolved DPM via Dhizuku.binderWrapper")
+                return baseDpm
+            }
+        } catch (_: Exception) {
+        }
+
+        return null
     }
 
     fun getAdminComponent(context: Context): ComponentName {
