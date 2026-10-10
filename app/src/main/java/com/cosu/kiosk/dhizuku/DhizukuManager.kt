@@ -52,13 +52,18 @@ object DhizukuManager {
     fun getDevicePolicyManager(context: Context): DevicePolicyManager {
         return try {
             if (isPermissionGranted()) {
-                Dhizuku.getDevicePolicyManager() ?: (context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager)
+                Dhizuku.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                    as? DevicePolicyManager
+                    ?: (context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                        as DevicePolicyManager)
             } else {
-                context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+                context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                    as DevicePolicyManager
             }
         } catch (e: Exception) {
             Log.w(TAG, "Error obtaining Dhizuku DPM proxy, falling back to system DPM", e)
-            context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            context.getSystemService(Context.DEVICE_POLICY_SERVICE)
+                as DevicePolicyManager
         }
     }
 
