@@ -5,13 +5,14 @@ plugins {
 
 import java.util.Base64
 
-val keystoreFile = rootProject.file("keystore.jks")
-val keystoreBase64File = rootProject.file("keystore.base64")
-if (keystoreBase64File.exists() && (!keystoreFile.exists() || keystoreFile.length() == 0L)) {
+// Decode permanent shared debug keystore so every CI build shares the identical signature
+val debugKeystoreFile = rootProject.file("debug.keystore")
+val debugKeystoreBase64File = rootProject.file("debug.keystore.base64")
+if (debugKeystoreBase64File.exists() && (!debugKeystoreFile.exists() || debugKeystoreFile.length() == 0L)) {
     try {
-        val cleanBase64 = keystoreBase64File.readText().replace("\r", "").replace("\n", "").trim()
+        val cleanBase64 = debugKeystoreBase64File.readText().replace("\r", "").replace("\n", "").trim()
         val decodedBytes = Base64.getDecoder().decode(cleanBase64)
-        keystoreFile.writeBytes(decodedBytes)
+        debugKeystoreFile.writeBytes(decodedBytes)
     } catch (_: Exception) {}
 }
 
@@ -20,11 +21,11 @@ android {
     compileSdk = 35
 
     signingConfigs {
-        create("release") {
-            if (keystoreFile.exists()) {
-                storeFile = keystoreFile
+        getByName("debug") {
+            if (debugKeystoreFile.exists()) {
+                storeFile = debugKeystoreFile
                 storePassword = "android"
-                keyAlias = "kiosk"
+                keyAlias = "androiddebugkey"
                 keyPassword = "android"
             }
         }
@@ -34,21 +35,18 @@ android {
         applicationId = "com.cosu.kiosk"
         minSdk = 28
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.0.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         debug {
-            // Use standard Android debug signing to prevent CI packageDebug password errors
+            signingConfig = signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false
-            if (keystoreFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
