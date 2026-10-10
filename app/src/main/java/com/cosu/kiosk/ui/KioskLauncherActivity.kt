@@ -1,15 +1,18 @@
 package com.cosu.kiosk.ui
 
 import android.app.ActivityOptions
+import android.bluetooth.BluetoothAdapter
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Bundle
-import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -20,27 +23,22 @@ import com.cosu.kiosk.updater.AppUpdateManager
 import kotlinx.coroutines.launch
 
 /**
- * Dedicated Dual-App Kiosk Home Screen.
- * Displays two prominent cards:
- * 1. Gospel Library (org.lds.ldssa)
- * 2. The Book of Mormon (org.lds.bom)
- *
- * Automatically checks GitHub releases for updates in the background on startup,
- * updating the launcher seamlessly.
+ * Dedicated Dual-App Kiosk Home Screen with Tabbed Settings.
+ * - Library Tab: Gospel Library (org.lds.ldssa) & The Book of Mormon (org.lds.bom)
+ * - Settings Tab: Wi-Fi, Bluetooth controls, and Administrator Unlock
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityLauncherBinding
-
-    private var tapSequenceCount = 0
-    private var lastSequenceTimestamp = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLauncherBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        setupUI()
+        setupNavigation()
+        setupAppCards()
+        setupSettingsControls()
         initializeAndLock()
         checkForBackgroundUpdates()
     }
@@ -48,38 +46,127 @@ class KioskLauncherActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateCardsStatus()
+        updateConnectivityStatus()
         ensureLocked()
     }
 
-    private fun setupUI() {
-        // App 1: Gospel Library Card
+    private fun setupNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_library -> {
+                    binding.viewTabLibrary.visibility = View.VISIBLE
+                    binding.viewTabSettings.visibility = View.GONE
+                    binding.tvHeaderTitle.text = "Study Library"
+                    true
+                }
+                R.id.nav_settings -> {
+                    binding.viewTabLibrary.visibility = View.GONE
+                    binding.viewTabSettings.visibility = View.VISIBLE
+                    binding.tvHeaderTitle.text = "Settings"
+                    updateConnectivityStatus()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun setupAppCards() {
+        // App 1: Gospel Library
         binding.cardGospelLibrary.setOnClickListener {
             launchApp(DhizukuManager.PKG_GOSPEL_LIBRARY)
         }
 
-        // App 2: The Book of Mormon Card
+        // App 2: The Book of Mormon
         binding.cardBookOfMormon.setOnClickListener {
             launchApp(DhizukuManager.PKG_BOOK_OF_MORMON)
         }
+    }
 
-        // Hidden 5-tap trigger on the title for Admin PIN unlock
-        binding.tvKioskTitle.setOnClickListener {
-            val now = SystemClock.elapsedRealtime()
-            if (now - lastSequenceTimestamp > 2500) {
-                tapSequenceCount = 0
-            }
-            lastSequenceTimestamp = now
-            tapSequenceCount++
+    private fun setupSettingsControls() {
+        // Wi-Fi launcher / panel
+        val openWifiAction = View.OnClickListener {
+            openWifiSettings()
+        }
+        binding.cardWifi.setOnClickListener(openWifiAction)
+        binding.btnOpenWifi.setOnClickListener(openWifiAction)
 
-            if (tapSequenceCount >= 5) {
-                tapSequenceCount = 0
-                DiagnosticsController.showVerificationPrompt(
-                    context = this,
-                    onVerified = {
-                        performUnlock()
-                    }
-                )
+        // Bluetooth launcher / panel
+        val openBluetoothAction = View.OnClickListener {
+            openBluetoothSettings()
+        }
+        binding.cardBluetooth.setOnClickListener(openBluetoothAction)
+        binding.btnOpenBluetooth.setOnClickListener(openBluetoothAction)
+
+        // Admin Unlock button in Settings tab
+        val unlockAction = View.OnClickListener {
+            DiagnosticsController.showVerificationPrompt(
+                context = this,
+                onVerified = {
+                    performUnlock()
+                }
+            )
+        }
+        binding.cardAdminUnlock.setOnClickListener(unlockAction)
+        binding.btnTriggerUnlock.setOnClickListener(unlockAction)
+
+        // Keep 5-tap trigger on the header icon as a discreet shortcut
+        binding.ivHeaderLock.setOnClickListener {
+            DiagnosticsController.showVerificationPrompt(
+                context = this,
+                onVerified = {
+                    performUnlock()
+                }
+            )
+        }
+    }
+
+    private fun openWifiSettings() {
+        // Try native modern connectivity panel first (Android 10+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val panelIntent = Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+            try {
+                startActivity(panelIntent)
+                return
+            } catch (_: Exception) {}
+        }
+
+        // Fallback to standard Wi-Fi settings
+        val wifiIntent = Intent(Settings.ACTION_WIFI_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(wifiIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to open Wi-Fi settings: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openBluetoothSettings() {
+        // Try Bluetooth settings
+        val btIntent = Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(btIntent)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Unable to open Bluetooth settings: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateConnectivityStatus() {
+        try {
+            val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            val isWifiEnabled = wifiManager?.isWifiEnabled == true
+            binding.tvWifiStatus.text = if (isWifiEnabled) "Wi-Fi is ON • Tap to manage networks" else "Wi-Fi is OFF • Tap to connect"
+
+            val btAdapter = BluetoothAdapter.getDefaultAdapter()
+            val isBtEnabled = btAdapter?.isEnabled == true
+            binding.tvBluetoothStatus.text = if (isBtEnabled) "Bluetooth is ON • Tap to pair audio" else "Bluetooth is OFF • Tap to pair"
+        } catch (e: Exception) {
+            Log.w(TAG, "Notice querying connectivity state: ${e.message}")
         }
     }
 
@@ -255,7 +342,10 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        // Handled on Home Screen
+        // If on Settings tab, back press returns to Library tab
+        if (binding.viewTabSettings.visibility == View.VISIBLE) {
+            binding.bottomNavigation.selectedItemId = R.id.nav_library
+        }
     }
 
     companion object {
