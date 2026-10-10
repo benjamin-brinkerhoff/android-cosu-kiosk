@@ -1,8 +1,10 @@
 package com.cosu.kiosk.ui
 
 import android.app.ActivityOptions
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -232,6 +234,37 @@ class KioskLauncherActivity : AppCompatActivity() {
             binding.btnAction.text = getString(R.string.btn_launch)
             binding.btnAction.setOnClickListener {
                 launchTargetInLockTask()
+            }
+        }
+    }
+
+    private fun openPlayStoreForPackage(pkg: String) {
+        val marketIntent = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("market://details?id=$pkg")
+        ).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            startActivity(marketIntent)
+        } catch (_: ActivityNotFoundException) {
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/apps/details?id=$pkg")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+
+            try {
+                startActivity(webIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Unable to open Play Store for $pkg", e)
+                Toast.makeText(
+                    this,
+                    "Unable to open the Play Store",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         }
     }
