@@ -178,7 +178,7 @@
             </LinearLayout>
         </ScrollView>
 
-        <!-- TAB 2: SETTINGS TAB (Wi-Fi, Bluetooth, Admin Unlock) -->
+        <!-- TAB 2: SETTINGS TAB (Wi-Fi, Bluetooth, Updates, Admin Unlock) -->
         <ScrollView
             android:id="@+id/viewTabSettings"
             android:layout_width="match_parent"
@@ -310,12 +310,64 @@
                     </LinearLayout>
                 </androidx.cardview.widget.CardView>
 
+                <!-- Software Updates Card -->
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/cardUpdates"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:cardBackgroundColor="@color/card_bg"
+                    app:cardCornerRadius="16dp"
+                    app:cardElevation="2dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:padding="16dp">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Software Update"
+                                android:textColor="@color/text_primary"
+                                android:textSize="16sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/tvUpdateStatus"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="4dp"
+                                android:text="Tap to check GitHub for updates"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp" />
+
+                        </LinearLayout>
+
+                        <Button
+                            android:id="@+id/btnCheckUpdate"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Update" />
+
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+
                 <!-- Admin Unlock Card -->
                 <androidx.cardview.widget.CardView
                     android:id="@+id/cardAdminUnlock"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="20dp"
+                    android:layout_marginTop="16dp"
                     android:clickable="true"
                     android:focusable="true"
                     android:foreground="?android:attr/selectableItemBackground"

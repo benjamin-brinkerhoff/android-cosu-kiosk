@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 /**
  * Dedicated Dual-App Kiosk Home Screen with Tabbed Settings.
  * - Library Tab: Gospel Library (org.lds.ldssa) & The Book of Mormon (org.lds.bom)
- * - Settings Tab: Wi-Fi, Bluetooth controls, and Administrator Unlock
+ * - Settings Tab: Wi-Fi, Bluetooth controls, Software Updates, and Administrator Unlock
  */
 class KioskLauncherActivity : AppCompatActivity() {
 
@@ -93,6 +93,12 @@ class KioskLauncherActivity : AppCompatActivity() {
         binding.cardBluetooth.setOnClickListener(openBluetoothAction)
         binding.btnOpenBluetooth.setOnClickListener(openBluetoothAction)
 
+        // Manual Check for Updates Button
+        binding.btnCheckUpdate.setOnClickListener {
+            triggerManualUpdateCheck()
+        }
+
+        // Admin Unlock button in Settings tab
         val unlockAction = View.OnClickListener {
             DiagnosticsController.showVerificationPrompt(
                 context = this,
@@ -114,18 +120,29 @@ class KioskLauncherActivity : AppCompatActivity() {
         }
     }
 
+    private fun triggerManualUpdateCheck() {
+        binding.btnCheckUpdate.isEnabled = false
+        binding.tvUpdateStatus.text = "Checking GitHub..."
+        Toast.makeText(this, "Checking for latest release...", Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            AppUpdateManager.checkForUpdatesAndInstall(this@KioskLauncherActivity) { status ->
+                runOnUiThread {
+                    binding.tvUpdateStatus.text = status
+                    Toast.makeText(this@KioskLauncherActivity, status, Toast.LENGTH_SHORT).show()
+                }
+            }
+            binding.btnCheckUpdate.isEnabled = true
+        }
+    }
+
     private fun openWifiSettings() {
-        // Multi-tier intent launching to ensure Wi-Fi settings open even within locked mode
         val intents = listOf(
-            // 1. Android Connectivity Panel
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY)
             } else null,
-            // 2. Direct Wi-Fi Settings action
             Intent(Settings.ACTION_WIFI_SETTINGS),
-            // 3. Wireless Settings fallback
             Intent(Settings.ACTION_WIRELESS_SETTINGS),
-            // 4. Explicit Samsung Wi-Fi activity
             Intent().setClassName("com.android.settings", "com.android.settings.Settings\$WifiSettingsActivity")
         ).filterNotNull()
 
@@ -144,11 +161,8 @@ class KioskLauncherActivity : AppCompatActivity() {
 
     private fun openBluetoothSettings() {
         val intents = listOf(
-            // 1. Direct Bluetooth Settings action
             Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
-            // 2. Explicit Samsung Bluetooth activity
             Intent().setClassName("com.android.settings", "com.android.settings.Settings\$BluetoothSettingsActivity"),
-            // 3. General connectivity fallback
             Intent(Settings.ACTION_WIRELESS_SETTINGS)
         )
 

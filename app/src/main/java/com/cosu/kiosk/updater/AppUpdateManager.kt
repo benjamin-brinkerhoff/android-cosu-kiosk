@@ -13,17 +13,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Handles automated background updates by checking GitHub Releases:
+ * Handles automated background & manual on-demand updates by checking GitHub Releases:
  * https://api.github.com/repos/benjamin-brinkerhoff/android-cosu-kiosk/releases/latest
- *
- * Supports two update delivery strategies:
- * 1. Silent PackageInstaller session (requires Device Owner / PackageInstaller permission)
- * 2. Intent-based package installer session prompt
  */
 object AppUpdateManager {
     private const val TAG = "AppUpdateManager"
@@ -33,24 +28,26 @@ object AppUpdateManager {
     suspend fun checkForUpdatesAndInstall(context: Context, onStatusUpdate: ((String) -> Unit)? = null) {
         withContext(Dispatchers.IO) {
             try {
-                onStatusUpdate?.invoke("Checking for updates...")
+                onStatusUpdate?.invoke("Checking GitHub for updates...")
                 val apkDownloadUrl = fetchLatestReleaseApkUrl()
                 if (apkDownloadUrl == null) {
-                    Log.i(TAG, "No APK asset found in latest GitHub release.")
+                    onStatusUpdate?.invoke("No new build release found.")
                     return@withContext
                 }
 
-                onStatusUpdate?.invoke("Downloading latest build...")
+                onStatusUpdate?.invoke("Downloading latest update...")
                 val downloadedFile = downloadApk(context, apkDownloadUrl)
-                if (downloadedFile == null || !downloadedFile.exists()) {
-                    Log.e(TAG, "Failed to download update APK.")
+                if (downloadedFile == null || !downloadedFile.exists() || downloadedFile.length() == 0L) {
+                    onStatusUpdate?.invoke("Download failed. Check Wi-Fi connection.")
                     return@withContext
                 }
 
-                onStatusUpdate?.invoke("Installing update...")
+                val sizeKb = downloadedFile.length() / 1024
+                onStatusUpdate?.invoke("Installing update (${sizeKb} KB)...")
                 installApk(context, downloadedFile)
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking/installing update", e)
+                onStatusUpdate?.invoke("Update check error: ${e.localizedMessage}")
             }
         }
     }
@@ -102,7 +99,6 @@ object AppUpdateManager {
 
     private fun installApk(context: Context, apkFile: File) {
         try {
-            // Attempt silent install via PackageInstaller
             val packageInstaller = context.packageManager.packageInstaller
             val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
             val sessionId = packageInstaller.createSession(params)
@@ -127,8 +123,7 @@ object AppUpdateManager {
             session.close()
             Log.i(TAG, "Committed PackageInstaller session $sessionId")
         } catch (e: Exception) {
-            Log.w(TAG, "Silent install session failed, falling back to VIEW intent: ${e.message}")
-            // Fallback to prompt-based PackageInstaller
+            Log.w(TAG, "Silent install session failed, falling back to prompt: ${e.message}")
             val apkUri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
